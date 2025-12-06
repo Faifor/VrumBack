@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends
 
 from app.handlers.user_document.user_document_handler import UserDocumentHandler
-from modules.schemas.document_schemas import UserDocumentRead
+from modules.schemas.document_schemas import UserDocumentRead, UserDocumentUpdate
 
 router = APIRouter()
 
 
-@router.get("/users/me/document", response_model=UserDocumentRead)
-def get_my_document(
+@router.put("/users/me/document", response_model=UserDocumentRead)
+def update_my_document(
+    data: UserDocumentUpdate,
     handler: UserDocumentHandler = Depends(UserDocumentHandler),
 ):
-    return handler.get_my_document()
+    return handler.upsert_my_document(data)

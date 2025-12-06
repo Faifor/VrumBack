@@ -1,11 +1,14 @@
 import datetime
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 
 from modules.connection_to_db.database import get_session
 from modules.models.user import User
 from modules.utils.config import settings
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 def create_access_token(data: dict, expire_delta: datetime.timedelta):
@@ -21,18 +24,10 @@ def create_access_token(data: dict, expire_delta: datetime.timedelta):
 
 
 async def get_current_user(
-    request: Request,
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_session),
 ) -> User:
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token missing or invalid",
-        )
-
-    token = auth_header.split(" ")[1]
-
+    
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
