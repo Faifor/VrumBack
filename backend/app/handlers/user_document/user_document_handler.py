@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, HTTPException, status
@@ -17,8 +18,10 @@ from modules.utils.jwt_utils import get_current_user
 
 # ==== настройки DOCX (как в старом main, но локально в этом модуле) ====
 
-CONTRACT_DOCX_TEMPLATE_PATH = "static/contract_template.docx"
-GENERATED_CONTRACTS_DIR = "generated_contracts"
+BACKEND_DIR = Path(__file__).resolve().parents[3]
+
+CONTRACT_DOCX_TEMPLATE_PATH = BACKEND_DIR / "static" / "contract_template.docx"
+GENERATED_CONTRACTS_DIR = BACKEND_DIR / "generated_contracts"
 CONTRACT_CITY = "Великий Новгород"
 
 os.makedirs(GENERATED_CONTRACTS_DIR, exist_ok=True)
@@ -80,7 +83,7 @@ def _week_word(n: int | None) -> str:
 
 
 def _render_contract_docx(user: User, doc: UserDocument) -> str:
-    if not os.path.exists(CONTRACT_DOCX_TEMPLATE_PATH):
+    if not CONTRACT_DOCX_TEMPLATE_PATH.exists():
         raise FileNotFoundError("DOCX-шаблон не найден")
 
     document = DocxDocument(CONTRACT_DOCX_TEMPLATE_PATH)
@@ -114,9 +117,9 @@ def _render_contract_docx(user: User, doc: UserDocument) -> str:
 
     _replace_placeholders_in_docx(document, values)
 
-    out_path = os.path.join(GENERATED_CONTRACTS_DIR, f"contract_user_{user.id}.docx")
+    out_path = GENERATED_CONTRACTS_DIR / f"contract_user_{user.id}.docx"
     document.save(out_path)
-    return out_path
+    return str(out_path)
 
 
 class UserDocumentHandler:
