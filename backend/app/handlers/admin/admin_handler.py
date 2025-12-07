@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, HTTPException, status
@@ -18,6 +19,7 @@ from modules.schemas.document_schemas import (
 )
 from modules.utils.admin_utils import get_current_admin
 
+BACKEND_DIR = Path(__file__).resolve().parents[3]
 
 CONTRACT_DOCX_TEMPLATE_PATH = "static/contract_template.docx"
 GENERATED_CONTRACTS_DIR = "generated_contracts"
