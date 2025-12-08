@@ -1,8 +1,9 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
 from modules.connection_to_db.database import Base
+from modules.utils.encryption import EncryptedString
 from .types import DocumentStatusEnum
 
 
@@ -12,11 +13,11 @@ class UserDocument(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
 
-    full_name = Column(String, nullable=False)
-    address = Column(String, nullable=False)
-    passport = Column(String, nullable=False)
-    phone = Column(String, nullable=False)
-    bank_account = Column(String, nullable=True)
+    full_name = Column(EncryptedString(255), nullable=False)
+    address = Column(EncryptedString(255), nullable=False)
+    passport = Column(EncryptedString(255), nullable=False)
+    phone = Column(EncryptedString(255), nullable=False)
+    bank_account = Column(EncryptedString(255), nullable=True)
 
     contract_number = Column(String, nullable=True)
     bike_serial = Column(String, nullable=True)
@@ -36,7 +37,7 @@ class UserDocument(Base):
     )
 
     rejection_reason = Column(String, nullable=True)
-    contract_text = Column(Text, nullable=True)
+    contract_text = Column(EncryptedString(), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
