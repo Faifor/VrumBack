@@ -19,13 +19,40 @@ from modules.schemas.document_schemas import (
 )
 from modules.utils.admin_utils import get_current_admin
 
-BACKEND_DIR = Path(__file__).resolve().parents[3]
-
-CONTRACT_DOCX_TEMPLATE_PATH = "static/contract_template.docx"
-GENERATED_CONTRACTS_DIR = "generated_contracts"
 CONTRACT_CITY = "Великий Новгород"
 
-os.makedirs(GENERATED_CONTRACTS_DIR, exist_ok=True)
+
+def _resolve_contract_paths() -> tuple[Path, Path]:
+    """Locate the DOCX template and ensure output directory exists.
+
+    The service can be started from different working directories (e.g. docker
+    image or local run). To avoid FileNotFoundError 500 errors, try several
+    likely base paths until the template is found.
+    """
+
+    candidate_bases = [
+        Path(__file__).resolve().parents[3],
+        Path(__file__).resolve().parents[2],
+        Path(__file__).resolve().parents[1],
+    ]
+
+    checked: list[str] = []
+
+    for base in candidate_bases:
+        template_path = base / "static" / "contract_template.docx"
+        checked.append(str(template_path))
+
+        if template_path.exists():
+            generated_dir = base / "generated_contracts"
+            os.makedirs(generated_dir, exist_ok=True)
+            return template_path, generated_dir
+
+    raise FileNotFoundError(
+        "DOCX-шаблон не найден; проверены пути: " + ", ".join(checked)
+    )
+
+
+CONTRACT_DOCX_TEMPLATE_PATH, GENERATED_CONTRACTS_DIR = _resolve_contract_paths()
 
 
 def _replace_in_paragraph(paragraph: Paragraph, values: dict[str, Any]) -> None:
@@ -84,8 +111,7 @@ def _week_word(n: int | None) -> str:
 
 
 def _render_contract_docx(user: User, doc: UserDocument) -> str:
-    if not os.path.exists(CONTRACT_DOCX_TEMPLATE_PATH):
-        raise FileNotFoundError("DOCX-шаблон не найден")
+    document = DocxDocument(CONTRACT_DOCX_TEMPLATE_PATH)
 
     document = DocxDocument(CONTRACT_DOCX_TEMPLATE_PATH)
 
@@ -118,9 +144,9 @@ def _render_contract_docx(user: User, doc: UserDocument) -> str:
 
     _replace_placeholders_in_docx(document, values)
 
-    out_path = os.path.join(GENERATED_CONTRACTS_DIR, f"contract_user_{user.id}.docx")
+    out_path = GENERATED_CONTRACTS_DIR / f"contract_user_{user.id}.docx"
     document.save(out_path)
-    return out_path
+    return str(out_path)
 
 
 class AdminHandler:
@@ -231,4 +257,10 @@ class AdminHandler:
                 detail="Пользователь не найден",
             )
 
-        return _render_contract_docx(user, doc)
+        try:
+            return _render_contract_docx(user, doc)
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=str(exc),
+            ) from exc
