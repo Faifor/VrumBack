@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -11,6 +12,9 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
+    ENCRYPTION_KEY: str
+    SECURE_STORAGE_DIR: Path = BASE_DIR / "secure_storage"
+    CONTRACT_TEMPLATE_FILENAME: str = "contract_template.docx"
 
     class Config:
         # Use the project-level .env file regardless of the working directory

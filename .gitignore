@@ -7,6 +7,12 @@
 
 # Ignore auto-generated contract files
 **/generated_contracts/
+backend/secure_storage/
+
+# OS-specific artifacts and local templates
+**/.DS_Store
+backend/secure_storage/templates/*.docx
+
 # User-specific stuff
 .idea/**/workspace.xml
 .idea/**/tasks.xml
