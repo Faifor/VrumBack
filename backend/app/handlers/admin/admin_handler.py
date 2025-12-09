@@ -7,19 +7,33 @@ from modules.models.user import User
 from modules.models.user_document import UserDocument
 from modules.models.types import DocumentStatusEnum
 from modules.schemas.document_schemas import (
-
     DocumentRejectRequest,
     DocumentStatus,
+    UserDocumentAdminUpdate,
     UserDocumentRead,
     UserWithDocumentSummary,
 )
 from modules.utils.admin_utils import get_current_admin
 from modules.utils.document_security import (
     decrypt_document_fields,
+    encrypt_document_fields,
     get_sensitive_data_cipher,
     render_contract_docx,
     serialize_document_for_response,
 )
+
+
+_ADMIN_DOCUMENT_FIELDS = {
+    "contract_number",
+    "bike_serial",
+    "akb1_serial",
+    "akb2_serial",
+    "akb3_serial",
+    "amount",
+    "amount_text",
+    "filled_date",
+    "end_date",
+}
 
 
 class AdminHandler:
@@ -61,6 +75,34 @@ class AdminHandler:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Документ не найден",
             )
+        return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
+
+    def update_user_document(
+        self, user_id: int, body: UserDocumentAdminUpdate
+    ) -> UserDocumentRead:
+        doc = (
+            self.db.query(UserDocument).filter(UserDocument.user_id == user_id).first()
+        )
+        if not doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Документ не найден",
+            )
+
+        encrypted_data = encrypt_document_fields(
+            body.model_dump(exclude_unset=True),
+            self.cipher,
+            allowed_fields=_ADMIN_DOCUMENT_FIELDS,
+        )
+
+        for field, value in encrypted_data.items():
+            setattr(doc, field, value)
+
+        if body.weeks_count is not None or "weeks_count" in body.model_fields_set:
+            doc.weeks_count = body.weeks_count
+
+        self.db.commit()
+        self.db.refresh(doc)
         return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
 
     def approve_document(self, user_id: int) -> UserDocumentRead:

@@ -11,13 +11,14 @@ class DocumentStatus(str, Enum):
     rejected = "rejected"
 
 
-class UserDocumentBase(BaseModel):
+class UserDocumentUserUpdate(BaseModel):
     full_name: str
     address: str
     passport: str
     phone: str
     bank_account: str | None = None
 
+class UserDocumentAdminUpdate(BaseModel):
     contract_number: str | None = None
     bike_serial: str | None = None
     akb1_serial: str | None = None
@@ -30,7 +31,7 @@ class UserDocumentBase(BaseModel):
     end_date: str | None = None
 
 
-class UserDocumentUpdate(UserDocumentBase):
+class UserDocumentBase(UserDocumentUserUpdate, UserDocumentAdminUpdate):
     pass
 
 
