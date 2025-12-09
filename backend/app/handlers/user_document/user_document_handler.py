@@ -5,7 +5,7 @@ from modules.connection_to_db.database import get_session
 from modules.models.user import User
 from modules.models.user_document import UserDocument
 from modules.models.types import DocumentStatusEnum
-from modules.schemas.document_schemas import UserDocumentUpdate
+from modules.schemas.document_schemas import UserDocumentUserUpdate
 from modules.utils.document_security import (
     decrypt_document_fields,
     encrypt_document_fields,
@@ -14,6 +14,15 @@ from modules.utils.document_security import (
     serialize_document_for_response,
 )
 from modules.utils.jwt_utils import get_current_user
+
+
+_USER_DOCUMENT_FIELDS = {
+    "full_name",
+    "address",
+    "passport",
+    "phone",
+    "bank_account",
+}
 
 
 class UserDocumentHandler:
@@ -42,26 +51,26 @@ class UserDocumentHandler:
             )
         return serialize_document_for_response(doc, self.cipher)
 
-    def upsert_my_document(self, data: UserDocumentUpdate):
+    def upsert_my_document(self, data: UserDocumentUserUpdate):
         doc = self._get_my_document()
-        encrypted_data = encrypt_document_fields(data.model_dump(), self.cipher)
+        encrypted_data = encrypt_document_fields(
+            data.model_dump(exclude_unset=True),
+            self.cipher,
+            allowed_fields=_USER_DOCUMENT_FIELDS,
+        )
 
         if not doc:
             doc = UserDocument(
                 user_id=self.user.id,
-                weeks_count=data.weeks_count,
                 status=DocumentStatusEnum.DRAFT,
-                **encrypted_data,
             )
             self.db.add(doc)
-        else:
-            for field, value in encrypted_data.items():
-                setattr(doc, field, value)
+        for field, value in encrypted_data.items():
+            setattr(doc, field, value)
 
-            doc.weeks_count = data.weeks_count
-            doc.status = DocumentStatusEnum.DRAFT
-            doc.rejection_reason = None
-            doc.contract_text = None
+        doc.status = DocumentStatusEnum.DRAFT
+        doc.rejection_reason = None
+        doc.contract_text = None
 
         self.db.commit()
         self.db.refresh(doc)

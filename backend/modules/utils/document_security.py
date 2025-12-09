@@ -100,10 +100,17 @@ def get_sensitive_data_cipher() -> SensitiveDataCipher:
 
 
 def encrypt_document_fields(
-    data: Mapping[str, Any], cipher: SensitiveDataCipher
+    data: Mapping[str, Any],
+    cipher: SensitiveDataCipher,
+    allowed_fields: set[str] | None = None,
 ) -> dict[str, str | None]:
     encrypted: dict[str, str | None] = {}
-    for field in _SENSITIVE_DOCUMENT_FIELDS:
+    fields_to_encrypt = allowed_fields or _SENSITIVE_DOCUMENT_FIELDS
+    for field in fields_to_encrypt:
+        if field not in data:
+            continue
+
+
         value = data.get(field)
         encrypted[field] = cipher.encrypt(value if value is None else str(value))
     return encrypted
