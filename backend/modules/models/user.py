@@ -15,6 +15,12 @@ class User(Base):
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
 
+    full_name = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    passport = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    bank_account = Column(String, nullable=True)
+
     role = Column(String, nullable=False, default="user")
 
     document = relationship(

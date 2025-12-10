@@ -8,6 +8,7 @@ from modules.models.types import DocumentStatusEnum
 from modules.schemas.document_schemas import UserDocumentUserUpdate
 from modules.utils.document_security import (
     decrypt_document_fields,
+    decrypt_user_fields,
     encrypt_document_fields,
     get_sensitive_data_cipher,
     render_contract_docx,
@@ -16,13 +17,7 @@ from modules.utils.document_security import (
 from modules.utils.jwt_utils import get_current_user
 
 
-_USER_DOCUMENT_FIELDS = {
-    "full_name",
-    "address",
-    "passport",
-    "phone",
-    "bank_account",
-}
+_PERSONAL_FIELDS = {"full_name", "address", "passport", "phone", "bank_account"}
 
 
 class UserDocumentHandler:
@@ -56,7 +51,7 @@ class UserDocumentHandler:
         encrypted_data = encrypt_document_fields(
             data.model_dump(exclude_unset=True),
             self.cipher,
-            allowed_fields=_USER_DOCUMENT_FIELDS,
+            allowed_fields=_PERSONAL_FIELDS,
         )
 
         if not doc:
@@ -66,7 +61,9 @@ class UserDocumentHandler:
             )
             self.db.add(doc)
         for field, value in encrypted_data.items():
-            setattr(doc, field, value)
+            setattr(self.user, field, value)
+
+        doc.user = self.user
 
         doc.status = DocumentStatusEnum.DRAFT
         doc.rejection_reason = None
@@ -74,6 +71,7 @@ class UserDocumentHandler:
 
         self.db.commit()
         self.db.refresh(doc)
+        self.db.refresh(self.user)
         return serialize_document_for_response(doc, self.cipher)
 
     def submit_my_document(self):
@@ -105,5 +103,8 @@ class UserDocumentHandler:
                 detail="Договор еще не одобрен",
             )
 
-        decrypted_fields = decrypt_document_fields(doc, self.cipher)
+        decrypted_fields = {
+            **decrypt_user_fields(self.user, self.cipher),
+            **decrypt_document_fields(doc, self.cipher),
+        }
         return render_contract_docx(self.user, doc, decrypted_fields)

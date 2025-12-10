@@ -16,12 +16,15 @@ if TYPE_CHECKING:
     from modules.models.user_document import UserDocument
 
 
-_SENSITIVE_DOCUMENT_FIELDS = {
+_PERSONAL_FIELDS = {
     "full_name",
     "address",
     "passport",
     "phone",
     "bank_account",
+    }
+
+_DOCUMENT_FIELDS = {
     "contract_number",
     "bike_serial",
     "akb1_serial",
@@ -105,7 +108,7 @@ def encrypt_document_fields(
     allowed_fields: set[str] | None = None,
 ) -> dict[str, str | None]:
     encrypted: dict[str, str | None] = {}
-    fields_to_encrypt = allowed_fields or _SENSITIVE_DOCUMENT_FIELDS
+    fields_to_encrypt = allowed_fields or (_PERSONAL_FIELDS | _DOCUMENT_FIELDS)
     for field in fields_to_encrypt:
         if field not in data:
             continue
@@ -115,12 +118,20 @@ def encrypt_document_fields(
         encrypted[field] = cipher.encrypt(value if value is None else str(value))
     return encrypted
 
+def decrypt_user_fields(
+    user: "User", cipher: SensitiveDataCipher
+) -> dict[str, str | None]:
+    decrypted: dict[str, str | None] = {}
+    for field in _PERSONAL_FIELDS:
+        decrypted[field] = cipher.decrypt(getattr(user, field))
+    return decrypted
+
 
 def decrypt_document_fields(
     doc: "UserDocument", cipher: SensitiveDataCipher
 ) -> dict[str, str | None]:
     decrypted: dict[str, str | None] = {}
-    for field in _SENSITIVE_DOCUMENT_FIELDS:
+    for field in _DOCUMENT_FIELDS:
         decrypted[field] = cipher.decrypt(getattr(doc, field))
     return decrypted
 
@@ -128,24 +139,26 @@ def decrypt_document_fields(
 def serialize_document_for_response(
     doc: "UserDocument", cipher: SensitiveDataCipher
 ) -> dict[str, Any]:
-    decrypted = decrypt_document_fields(doc, cipher)
+    user = doc.user
+    personal_data = decrypt_user_fields(user, cipher) if user else {}
+    doc_data = decrypt_document_fields(doc, cipher)
     return {
         "id": doc.id,
-        "full_name": decrypted.get("full_name") or "",
-        "address": decrypted.get("address") or "",
-        "passport": decrypted.get("passport") or "",
-        "phone": decrypted.get("phone") or "",
-        "bank_account": decrypted.get("bank_account"),
-        "contract_number": decrypted.get("contract_number"),
-        "bike_serial": decrypted.get("bike_serial"),
-        "akb1_serial": decrypted.get("akb1_serial"),
-        "akb2_serial": decrypted.get("akb2_serial"),
-        "akb3_serial": decrypted.get("akb3_serial"),
-        "amount": decrypted.get("amount"),
-        "amount_text": decrypted.get("amount_text"),
+        "full_name": personal_data.get("full_name") or "",
+        "address": personal_data.get("address") or "",
+        "passport": personal_data.get("passport") or "",
+        "phone": personal_data.get("phone") or "",
+        "bank_account": personal_data.get("bank_account"),
+        "contract_number": doc_data.get("contract_number"),
+        "bike_serial": doc_data.get("bike_serial"),
+        "akb1_serial": doc_data.get("akb1_serial"),
+        "akb2_serial": doc_data.get("akb2_serial"),
+        "akb3_serial": doc_data.get("akb3_serial"),
+        "amount": doc_data.get("amount"),
+        "amount_text": doc_data.get("amount_text"),
         "weeks_count": doc.weeks_count,
-        "filled_date": decrypted.get("filled_date"),
-        "end_date": decrypted.get("end_date"),
+        "filled_date": doc_data.get("filled_date"),
+        "end_date": doc_data.get("end_date"),
         "status": doc.status.value if hasattr(doc.status, "value") else str(doc.status),
         "rejection_reason": doc.rejection_reason,
         "contract_text": doc.contract_text,

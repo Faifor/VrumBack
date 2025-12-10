@@ -16,6 +16,7 @@ from modules.schemas.document_schemas import (
 from modules.utils.admin_utils import get_current_admin
 from modules.utils.document_security import (
     decrypt_document_fields,
+    decrypt_user_fields,
     encrypt_document_fields,
     get_sensitive_data_cipher,
     render_contract_docx,
@@ -173,5 +174,8 @@ class AdminHandler:
                 detail="Пользователь не найден",
             )
 
-        decrypted_fields = decrypt_document_fields(doc, self.cipher)
+        decrypted_fields = {
+            **decrypt_user_fields(user, self.cipher),
+            **decrypt_document_fields(doc, self.cipher),
+        }        
         return render_contract_docx(user, doc, decrypted_fields)

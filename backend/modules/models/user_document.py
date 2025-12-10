@@ -12,12 +12,6 @@ class UserDocument(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
 
-    full_name = Column(String, nullable=False)
-    address = Column(String, nullable=False)
-    passport = Column(String, nullable=False)
-    phone = Column(String, nullable=False)
-    bank_account = Column(String, nullable=True)
-
     contract_number = Column(String, nullable=True)
     bike_serial = Column(String, nullable=True)
     akb1_serial = Column(String, nullable=True)
