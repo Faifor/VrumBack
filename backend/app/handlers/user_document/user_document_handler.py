@@ -17,7 +17,15 @@ from modules.utils.document_security import (
 from modules.utils.jwt_utils import get_current_user
 
 
-_PERSONAL_FIELDS = {"full_name", "address", "passport", "phone", "bank_account"}
+_PERSONAL_FIELDS = {
+    "full_name",
+    "inn",
+    "registration_address",
+    "residential_address",
+    "passport",
+    "phone",
+    "bank_account",
+}
 
 
 class UserDocumentHandler:

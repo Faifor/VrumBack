@@ -8,8 +8,7 @@ DocumentStatus = Literal["draft", "pending", "approved", "rejected"]
 class UserWithDocumentSummary(BaseModel):
     id: int = Field(...)
     email: EmailStr = Field(...)
-    first_name: str = Field(...)
-    last_name: str = Field(...)
+    full_name: str | None = Field(default=None)
     role: str = Field(...)
     document_status: DocumentStatus | None = Field(default=None)
 

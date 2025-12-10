@@ -10,6 +10,10 @@ from modules.models.user import User
 from modules.schemas.user_schemas import UserCreate, UserRead
 from modules.schemas.auth_schemas import Token
 from modules.utils.config import settings
+from modules.utils.document_security import (
+    decrypt_user_fields,
+    get_sensitive_data_cipher,
+)
 from modules.utils.jwt_utils import create_access_token
 from modules.utils.password_utils import hash_password, verify_password
 
@@ -36,8 +40,6 @@ class AuthHandler:
         user = User(
             email=data.email,
             hashed_password=hash_password(data.password),
-            first_name=data.first_name,
-            last_name=data.last_name,
             role="user",
         )
 
@@ -66,4 +68,12 @@ class AuthHandler:
         return Token(access_token=token)
 
     async def me(self, current_user: User) -> UserRead:
-        return UserRead.model_validate(current_user)
+        cipher = get_sensitive_data_cipher()
+        decrypted_fields = decrypt_user_fields(current_user, cipher)
+        payload = {
+            "id": current_user.id,
+            "email": current_user.email,
+            "role": current_user.role,
+            **decrypted_fields,
+        }
+        return UserRead(**payload)
