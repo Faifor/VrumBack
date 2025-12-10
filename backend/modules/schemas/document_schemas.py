@@ -13,10 +13,14 @@ class DocumentStatus(str, Enum):
 
 class UserDocumentUserUpdate(BaseModel):
     full_name: str
-    address: str
+    inn: str
+    registration_address: str
+    residential_address: str
     passport: str
     phone: str
     bank_account: str | None = None
+
+
 
 class UserDocumentAdminUpdate(BaseModel):
     contract_number: str | None = None
@@ -51,8 +55,7 @@ class DocumentRejectRequest(BaseModel):
 class UserWithDocumentSummary(BaseModel):
     id: int
     email: EmailStr
-    first_name: str
-    last_name: str
+    full_name: str | None = None
     role: str
     document_status: DocumentStatus | None = None
 

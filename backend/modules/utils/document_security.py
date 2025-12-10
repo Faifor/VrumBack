@@ -18,11 +18,13 @@ if TYPE_CHECKING:
 
 _PERSONAL_FIELDS = {
     "full_name",
-    "address",
+    "inn",
+    "registration_address",
+    "residential_address",
     "passport",
     "phone",
     "bank_account",
-    }
+}
 
 _DOCUMENT_FIELDS = {
     "contract_number",
@@ -145,7 +147,9 @@ def serialize_document_for_response(
     return {
         "id": doc.id,
         "full_name": personal_data.get("full_name") or "",
-        "address": personal_data.get("address") or "",
+        "inn": personal_data.get("inn") or "",
+        "registration_address": personal_data.get("registration_address") or "",
+        "residential_address": personal_data.get("residential_address") or "",
         "passport": personal_data.get("passport") or "",
         "phone": personal_data.get("phone") or "",
         "bank_account": personal_data.get("bank_account"),
@@ -241,9 +245,14 @@ def render_contract_docx(
         "DATE": today_str,
         "FULL_NAME": decrypted_fields.get("full_name") or "",
         "ФИО": decrypted_fields.get("full_name") or "",
-        "ADDRESS": decrypted_fields.get("address") or "",
+        "ADDRESS": decrypted_fields.get("registration_address")
+        or decrypted_fields.get("residential_address")
+        or "",
+        "REGISTRATION_ADDRESS": decrypted_fields.get("registration_address") or "",
+        "RESIDENTIAL_ADDRESS": decrypted_fields.get("residential_address") or "",
         "PASSPORT": decrypted_fields.get("passport") or "",
         "PHONE": decrypted_fields.get("phone") or "",
+        "INN": decrypted_fields.get("inn") or "",
         "EMAIL": user.email or "",
         "BANK_ACCOUNT": decrypted_fields.get("bank_account") or "-",
         "№_договора": decrypted_fields.get("contract_number") or "",

@@ -55,12 +55,12 @@ class AdminHandler:
             doc = (
                 self.db.query(UserDocument).filter(UserDocument.user_id == u.id).first()
             )
+            personal_data = decrypt_user_fields(u, self.cipher)
             result.append(
                 UserWithDocumentSummary(
                     id=u.id,
                     email=u.email,
-                    first_name=u.first_name,
-                    last_name=u.last_name,
+                    full_name=personal_data.get("full_name"),
                     role=u.role,
                     document_status=DocumentStatus(doc.status) if doc else None,
                 )

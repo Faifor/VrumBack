@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.handlers.admin.admin_handler import AdminHandler
+from modules.utils.document_security import decrypt_user_fields
 
 router = APIRouter()
 
@@ -10,4 +11,6 @@ def admin_ping(
     handler: AdminHandler = Depends(AdminHandler),
 ):
     admin = handler.admin
-    return {"message": f"Hello, {admin.first_name}! Admin OK."}
+    decrypted = decrypt_user_fields(admin, handler.cipher)
+    greeting = decrypted.get("full_name") or admin.email
+    return {"message": f"Hello, {greeting}! Admin OK."}

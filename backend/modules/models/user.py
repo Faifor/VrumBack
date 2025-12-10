@@ -12,11 +12,10 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
 
-    first_name = Column(String, nullable=False)
-    last_name = Column(String, nullable=False)
-
     full_name = Column(String, nullable=True)
-    address = Column(String, nullable=True)
+    inn = Column(String, nullable=True)
+    registration_address = Column(String, nullable=True)
+    residential_address = Column(String, nullable=True)
     passport = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     bank_account = Column(String, nullable=True)
