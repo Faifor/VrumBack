@@ -65,7 +65,6 @@ class UserDocumentHandler:
         if not doc:
             doc = UserDocument(
                 user_id=self.user.id,
-                status=DocumentStatusEnum.DRAFT,
             )
             self.db.add(doc)
         for field, value in encrypted_data.items():
@@ -73,8 +72,8 @@ class UserDocumentHandler:
 
         doc.user = self.user
 
-        doc.status = DocumentStatusEnum.DRAFT
-        doc.rejection_reason = None
+        self.user.status = DocumentStatusEnum.DRAFT
+        self.user.rejection_reason = None
         doc.contract_text = None
 
         self.db.commit()
@@ -90,11 +89,20 @@ class UserDocumentHandler:
                 detail="Сначала заполните документ",
             )
 
-        doc.status = DocumentStatusEnum.PENDING
-        doc.rejection_reason = None
+        personal_data = decrypt_user_fields(self.user, self.cipher)
+        missing_fields = [field for field in _PERSONAL_FIELDS if not personal_data.get(field)]
+        if missing_fields:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Заполните все персональные данные перед отправкой",
+            )
+
+        self.user.status = DocumentStatusEnum.PENDING
+        self.user.rejection_reason = None
 
         self.db.commit()
         self.db.refresh(doc)
+        self.db.refresh(self.user)
         return serialize_document_for_response(doc, self.cipher)
 
     def get_my_contract_docx_path(self) -> str:
@@ -105,7 +113,7 @@ class UserDocumentHandler:
                 detail="Документ не найден",
             )
 
-        if doc.status != DocumentStatusEnum.APPROVED:
+        if self.user.status != DocumentStatusEnum.APPROVED:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Договор еще не одобрен",

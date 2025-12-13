@@ -56,7 +56,14 @@ class UserWithDocumentSummary(BaseModel):
     id: int
     email: EmailStr
     full_name: str | None = None
+    inn: str | None = None
+    registration_address: str | None = None
+    residential_address: str | None = None
+    passport: str | None = None
+    phone: str | None = None
+    bank_account: str | None = None
     role: str
-    document_status: DocumentStatus | None = None
+    status: DocumentStatus
+    rejection_reason: str | None = None
 
     model_config = ConfigDict(from_attributes=True)

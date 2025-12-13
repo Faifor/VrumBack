@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, Enum
 from sqlalchemy.orm import relationship
 
 from modules.connection_to_db.database import Base
+from .types import DocumentStatusEnum
 
 
 class User(Base):
@@ -19,6 +20,14 @@ class User(Base):
     passport = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     bank_account = Column(String, nullable=True)
+
+    status = Column(
+        Enum(DocumentStatusEnum, name="document_status_enum", native_enum=False),
+        nullable=False,
+        default=DocumentStatusEnum.DRAFT,
+        server_default=DocumentStatusEnum.DRAFT.value,
+    )
+    rejection_reason = Column(String, nullable=True)
 
     role = Column(String, nullable=False, default="user")
 
