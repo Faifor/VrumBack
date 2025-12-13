@@ -143,6 +143,8 @@ def serialize_document_for_response(
 ) -> dict[str, Any]:
     user = doc.user
     personal_data = decrypt_user_fields(user, cipher) if user else {}
+    status = getattr(user, "status", None)
+    rejection_reason = getattr(user, "rejection_reason", None)
     doc_data = decrypt_document_fields(doc, cipher)
     return {
         "id": doc.id,
@@ -163,8 +165,10 @@ def serialize_document_for_response(
         "weeks_count": doc.weeks_count,
         "filled_date": doc_data.get("filled_date"),
         "end_date": doc_data.get("end_date"),
-        "status": doc.status.value if hasattr(doc.status, "value") else str(doc.status),
-        "rejection_reason": doc.rejection_reason,
+        "status": status.value if hasattr(status, "value") else str(status)
+        if status
+        else None,
+        "rejection_reason": rejection_reason,
         "contract_text": doc.contract_text,
     }
 

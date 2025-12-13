@@ -1,9 +1,8 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
 from modules.connection_to_db.database import Base
-from .types import DocumentStatusEnum
 
 
 class UserDocument(Base):
@@ -23,13 +22,6 @@ class UserDocument(Base):
     filled_date = Column(String, nullable=True)
     end_date = Column(String, nullable=True)
 
-    status = Column(
-        Enum(DocumentStatusEnum, name="document_status_enum", native_enum=False),
-        default=DocumentStatusEnum.DRAFT,
-        nullable=False,
-    )
-
-    rejection_reason = Column(String, nullable=True)
     contract_text = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
