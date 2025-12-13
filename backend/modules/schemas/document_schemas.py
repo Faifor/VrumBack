@@ -1,3 +1,4 @@
+from datetime import date
 from enum import Enum
 from typing import List
 
@@ -31,8 +32,8 @@ class UserDocumentAdminUpdate(BaseModel):
     amount: str | None = None
     amount_text: str | None = None
     weeks_count: int | None = None
-    filled_date: str | None = None
-    end_date: str | None = None
+    filled_date: date | None = None
+    end_date: date | None = None
 
 
 class UserDocumentBase(UserDocumentUserUpdate, UserDocumentAdminUpdate):
@@ -40,9 +41,10 @@ class UserDocumentBase(UserDocumentUserUpdate, UserDocumentAdminUpdate):
 
 
 class UserDocumentRead(UserDocumentBase):
-    id: int
+    id: int | None = None
     status: DocumentStatus
     rejection_reason: str | None = None
+    active: bool = False
     contract_text: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
