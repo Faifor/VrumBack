@@ -26,7 +26,7 @@ class AuthHandler:
     def _get_user_by_email(self, email: str) -> User | None:
         stmt = select(User).where(User.email == email)
         result = self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        return result.unique().scalar_one_or_none()
 
     def _err(self, message: str, code: int = status.HTTP_400_BAD_REQUEST):
         raise HTTPException(status_code=code, detail=message)

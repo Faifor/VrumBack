@@ -31,10 +31,10 @@ class User(Base):
 
     role = Column(String, nullable=False, default="user")
 
-    document = relationship(
+    documents = relationship(
         "UserDocument",
         back_populates="user",
-        uselist=False,
+        uselist=True,
         cascade="all, delete-orphan",
         lazy="joined",
     )

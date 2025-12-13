@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Mapping, TYPE_CHECKING
@@ -26,7 +26,8 @@ _PERSONAL_FIELDS = {
     "bank_account",
 }
 
-_DOCUMENT_FIELDS = {
+_DATE_FIELDS = {"filled_date", "end_date"}
+_ENCRYPTED_DOCUMENT_FIELDS = {
     "contract_number",
     "bike_serial",
     "akb1_serial",
@@ -34,9 +35,8 @@ _DOCUMENT_FIELDS = {
     "akb3_serial",
     "amount",
     "amount_text",
-    "filled_date",
-    "end_date",
 }
+_DOCUMENT_FIELDS = _ENCRYPTED_DOCUMENT_FIELDS | _DATE_FIELDS
 
 _SECURE_TEMPLATE_SUBDIR = "templates"
 _SECURE_CONTRACTS_SUBDIR = "generated_contracts"
@@ -108,8 +108,8 @@ def encrypt_document_fields(
     data: Mapping[str, Any],
     cipher: SensitiveDataCipher,
     allowed_fields: set[str] | None = None,
-) -> dict[str, str | None]:
-    encrypted: dict[str, str | None] = {}
+) -> dict[str, Any]:
+    encrypted: dict[str, Any] = {}
     fields_to_encrypt = allowed_fields or (_PERSONAL_FIELDS | _DOCUMENT_FIELDS)
     for field in fields_to_encrypt:
         if field not in data:
@@ -117,6 +117,10 @@ def encrypt_document_fields(
 
 
         value = data.get(field)
+        if field in _DATE_FIELDS:
+            encrypted[field] = value
+            continue
+
         encrypted[field] = cipher.encrypt(value if value is None else str(value))
     return encrypted
 
@@ -131,23 +135,64 @@ def decrypt_user_fields(
 
 def decrypt_document_fields(
     doc: "UserDocument", cipher: SensitiveDataCipher
-) -> dict[str, str | None]:
-    decrypted: dict[str, str | None] = {}
+) -> dict[str, Any]:
+    decrypted: dict[str, Any] = {}
     for field in _DOCUMENT_FIELDS:
-        decrypted[field] = cipher.decrypt(getattr(doc, field))
+        value = getattr(doc, field)
+        if field in _DATE_FIELDS:
+            decrypted[field] = value
+        else:
+            decrypted[field] = cipher.decrypt(value)
     return decrypted
 
 
 def serialize_document_for_response(
-    doc: "UserDocument", cipher: SensitiveDataCipher
+    doc: "UserDocument | None", cipher: SensitiveDataCipher, user: "User | None" = None
 ) -> dict[str, Any]:
-    user = doc.user
+    if doc:
+        doc.refresh_dates_and_status()
+        user = user or doc.user
+        doc_data = decrypt_document_fields(doc, cipher)
+        filled_date = doc_data.get("filled_date")
+        end_date = doc_data.get("end_date")
+        doc_fields = {
+            "id": doc.id,
+            "contract_number": doc_data.get("contract_number"),
+            "bike_serial": doc_data.get("bike_serial"),
+            "akb1_serial": doc_data.get("akb1_serial"),
+            "akb2_serial": doc_data.get("akb2_serial"),
+            "akb3_serial": doc_data.get("akb3_serial"),
+            "amount": doc_data.get("amount"),
+            "amount_text": doc_data.get("amount_text"),
+            "weeks_count": doc.weeks_count,
+            "filled_date": _format_date_for_response(filled_date),
+            "end_date": _format_date_for_response(end_date),
+            "active": bool(doc.active),
+            "contract_text": doc.contract_text,
+        }
+    else:
+        doc_fields = {
+            "id": None,
+            "contract_number": None,
+            "bike_serial": None,
+            "akb1_serial": None,
+            "akb2_serial": None,
+            "akb3_serial": None,
+            "amount": None,
+            "amount_text": None,
+            "weeks_count": None,
+            "filled_date": None,
+            "end_date": None,
+            "active": False,
+            "contract_text": None,
+        }
+
+    user = user or getattr(doc, "user", None)
     personal_data = decrypt_user_fields(user, cipher) if user else {}
     status = getattr(user, "status", None)
     rejection_reason = getattr(user, "rejection_reason", None)
-    doc_data = decrypt_document_fields(doc, cipher)
+
     return {
-        "id": doc.id,
         "full_name": personal_data.get("full_name") or "",
         "inn": personal_data.get("inn") or "",
         "registration_address": personal_data.get("registration_address") or "",
@@ -155,22 +200,19 @@ def serialize_document_for_response(
         "passport": personal_data.get("passport") or "",
         "phone": personal_data.get("phone") or "",
         "bank_account": personal_data.get("bank_account"),
-        "contract_number": doc_data.get("contract_number"),
-        "bike_serial": doc_data.get("bike_serial"),
-        "akb1_serial": doc_data.get("akb1_serial"),
-        "akb2_serial": doc_data.get("akb2_serial"),
-        "akb3_serial": doc_data.get("akb3_serial"),
-        "amount": doc_data.get("amount"),
-        "amount_text": doc_data.get("amount_text"),
-        "weeks_count": doc.weeks_count,
-        "filled_date": doc_data.get("filled_date"),
-        "end_date": doc_data.get("end_date"),
         "status": status.value if hasattr(status, "value") else str(status)
         if status
         else None,
         "rejection_reason": rejection_reason,
-        "contract_text": doc.contract_text,
+        **doc_fields,
     }
+
+def _format_date_for_response(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)
 
 
 def _replace_in_paragraph(paragraph: Paragraph, values: dict[str, Any]) -> None:
@@ -244,6 +286,11 @@ def render_contract_docx(
     today_str = datetime.utcnow().strftime("%d.%m.%Y")
     week_word = _week_word(doc.weeks_count)
 
+    filled_date_value = decrypted_fields.get("filled_date")
+    end_date_value = decrypted_fields.get("end_date")
+    filled_date_str = _format_date_human(filled_date_value) or today_str
+    end_date_str = _format_date_human(end_date_value)
+
     values: dict[str, Any] = {
         "CITY": _CONTRACT_CITY,
         "DATE": today_str,
@@ -269,9 +316,9 @@ def render_contract_docx(
         "Сумма_пропись": decrypted_fields.get("amount_text") or "",
         "Кол_во_недель": str(doc.weeks_count) if doc.weeks_count is not None else "",
         "неделю": week_word,
-        "Дата_аполнения": decrypted_fields.get("filled_date") or today_str,
-        "Дата_заполнения": decrypted_fields.get("filled_date") or today_str,
-        "Дат_конец_аренды": decrypted_fields.get("end_date") or "",
+        "Дата_аполнения": filled_date_str,
+        "Дата_заполнения": filled_date_str,
+        "Дат_конец_аренды": end_date_str,
     }
 
     _replace_placeholders_in_docx(document, values)
@@ -279,3 +326,11 @@ def render_contract_docx(
     out_path = get_generated_contract_path(user.id)
     document.save(out_path)
     return str(out_path)
+
+
+def _format_date_human(value: Any) -> str:
+    if not value:
+        return ""
+    if isinstance(value, date):
+        return value.strftime("%d.%m.%Y")
+    return str(value)

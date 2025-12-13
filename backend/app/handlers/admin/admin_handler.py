@@ -42,8 +42,6 @@ _ADMIN_DOCUMENT_FIELDS = {
     "akb3_serial",
     "amount",
     "amount_text",
-    "filled_date",
-    "end_date",
 }
 
 
@@ -94,10 +92,26 @@ class AdminHandler:
         user = self._get_user_or_404(user_id)
         self._ensure_user_approved(user)
 
-        doc = self._get_user_document_or_404(user_id)
+        update_payload = body.model_dump(exclude_unset=True)
+        has_updates = bool(update_payload)
+
+        doc = self._get_latest_user_document(user_id)
+
+        if not doc:
+            if not has_updates:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Нет данных для создания договора",
+                )
+            doc = self._create_document(user_id, user)
+        elif not doc.active and has_updates:
+            doc = self._create_document(user_id, user)
+
+        if not has_updates:
+            return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
 
         encrypted_data = encrypt_document_fields(
-            body.model_dump(exclude_unset=True),
+            update_payload,
             self.cipher,
             allowed_fields=_ADMIN_DOCUMENT_FIELDS,
         )
@@ -108,22 +122,30 @@ class AdminHandler:
         if body.weeks_count is not None or "weeks_count" in body.model_fields_set:
             doc.weeks_count = body.weeks_count
 
+        if body.filled_date is not None or "filled_date" in body.model_fields_set:
+            doc.filled_date = body.filled_date
+
+        doc.refresh_dates_and_status()
+
         self.db.commit()
         self.db.refresh(doc)
         return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
 
     def approve_document(self, user_id: int) -> UserDocumentRead:
         user = self._get_user_or_404(user_id)
-        doc = self._get_user_document_or_404(user_id)
+        doc = self._get_latest_user_document(user_id)
         self._ensure_personal_data_filled(user)
 
         user.status = DocumentStatusEnum.APPROVED
         user.rejection_reason = None
 
         self.db.commit()
-        self.db.refresh(doc)
         self.db.refresh(user)
-        return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
+        if doc:
+            self.db.refresh(doc)
+        return UserDocumentRead(
+            **serialize_document_for_response(doc, self.cipher, user)
+        )
 
     def reject_document(
         self, user_id: int, body: DocumentRejectRequest
@@ -135,6 +157,9 @@ class AdminHandler:
         user.rejection_reason = body.reason
         doc.contract_text = None
         doc.weeks_count = None
+        doc.filled_date = None
+        doc.end_date = None
+        doc.active = False
 
         for field in _PERSONAL_FIELDS:
             setattr(user, field, None)
@@ -173,9 +198,7 @@ class AdminHandler:
         return user
 
     def _get_user_document_or_404(self, user_id: int) -> UserDocument:
-        doc = (
-            self.db.query(UserDocument).filter(UserDocument.user_id == user_id).first()
-        )
+        doc = self._get_latest_user_document(user_id)
         if not doc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -183,6 +206,24 @@ class AdminHandler:
             )
         return doc
 
+    def _get_latest_user_document(self, user_id: int) -> UserDocument | None:
+        doc = (
+            self.db.query(UserDocument)
+            .filter(UserDocument.user_id == user_id)
+            .order_by(UserDocument.created_at.desc(), UserDocument.id.desc())
+            .first()
+        )
+        if doc and doc.refresh_dates_and_status():
+            self.db.commit()
+            self.db.refresh(doc)
+        return doc
+
+    def _create_document(self, user_id: int, user: User) -> UserDocument:
+        new_doc = UserDocument(user_id=user_id)
+        new_doc.user = user
+        self.db.add(new_doc)
+        return new_doc
+    
     def _ensure_user_approved(self, user: User) -> None:
         if user.status != DocumentStatusEnum.APPROVED:
             raise HTTPException(
