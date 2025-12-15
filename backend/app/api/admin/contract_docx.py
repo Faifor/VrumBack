@@ -6,12 +6,13 @@ from app.handlers.admin.admin_handler import AdminHandler
 router = APIRouter()
 
 
-@router.get("/admin/users/{user_id}/contract-docx")
+@router.get("/admin/users/{user_id}/contract-docx/{document_id}")
 def admin_get_user_contract_docx(
     user_id: int,
+    document_id: int,
     handler: AdminHandler = Depends(AdminHandler),
 ):
-    path = handler.get_contract_docx_path(user_id)
+    path = handler.get_contract_docx_path(user_id, document_id)
     return FileResponse(
         path,
         media_type=(

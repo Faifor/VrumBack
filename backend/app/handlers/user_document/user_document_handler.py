@@ -38,20 +38,26 @@ class UserDocumentHandler:
         self.user = current_user
         self.cipher = get_sensitive_data_cipher()
 
-    def _get_my_document(self) -> UserDocument | None:
-        doc = (
-            self.db.query(UserDocument)
-            .filter(UserDocument.user_id == self.user.id)
-            .order_by(UserDocument.created_at.desc(), UserDocument.id.desc())
-            .first()
+    def _get_my_document(self, document_id: int | None = None) -> UserDocument | None:
+        query = self.db.query(UserDocument).filter(
+            UserDocument.user_id == self.user.id
         )
+
+        if document_id is not None:
+            query = query.filter(UserDocument.id == document_id)
+        else:
+            query = query.order_by(
+                UserDocument.created_at.desc(), UserDocument.id.desc()
+            )
+
+        doc = query.first()
         if doc and doc.refresh_dates_and_status():
             self.db.commit()
             self.db.refresh(doc)
         return doc
 
-    def get_my_document(self):
-        doc = self._get_my_document()
+    def get_my_document(self, document_id: int):
+        doc = self._get_my_document(document_id)
         return serialize_document_for_response(doc, self.cipher, self.user)
 
     def upsert_my_document(self, data: UserDocumentUserUpdate):
@@ -91,8 +97,8 @@ class UserDocumentHandler:
         self.db.refresh(self.user)
         return serialize_document_for_response(doc, self.cipher, self.user)
 
-    def get_my_contract_docx_path(self) -> str:
-        doc = self._get_my_document()
+    def get_my_contract_docx_path(self, document_id: int) -> str:
+        doc = self._get_my_document(document_id)
         if not doc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
