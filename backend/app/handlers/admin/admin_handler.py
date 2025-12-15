@@ -82,11 +82,11 @@ class AdminHandler:
             )
         return result
 
-    def get_user_document(self, user_id: int) -> UserDocumentRead:
+    def get_user_document(self, user_id: int, document_id: int) -> UserDocumentRead:
         user = self._get_user_or_404(user_id)
         self._ensure_user_approved(user)
 
-        doc = self._get_user_document_or_404(user_id)
+        doc = self._get_user_document_or_404(user_id, document_id)
         return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
 
     def update_user_document(
@@ -184,9 +184,9 @@ class AdminHandler:
         self.db.refresh(user)
         return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
 
-    def get_contract_docx_path(self, user_id: int) -> str:
+    def get_contract_docx_path(self, user_id: int, document_id: int) -> str:
         user = self._get_user_or_404(user_id)
-        doc = self._get_user_document_or_404(user_id)
+        doc = self._get_user_document_or_404(user_id, document_id)
 
         if user.status != DocumentStatusEnum.APPROVED:
             raise HTTPException(
@@ -209,8 +209,10 @@ class AdminHandler:
             )
         return user
 
-    def _get_user_document_or_404(self, user_id: int) -> UserDocument:
-        doc = self._get_latest_user_document(user_id)
+    def _get_user_document_or_404(
+        self, user_id: int, document_id: int | None = None
+    ) -> UserDocument:
+        doc = self._get_latest_user_document(user_id, document_id)
         if not doc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -218,13 +220,19 @@ class AdminHandler:
             )
         return doc
 
-    def _get_latest_user_document(self, user_id: int) -> UserDocument | None:
-        doc = (
-            self.db.query(UserDocument)
-            .filter(UserDocument.user_id == user_id)
-            .order_by(UserDocument.created_at.desc(), UserDocument.id.desc())
-            .first()
-        )
+    def _get_latest_user_document(
+        self, user_id: int, document_id: int | None = None
+    ) -> UserDocument | None:
+        query = self.db.query(UserDocument).filter(UserDocument.user_id == user_id)
+
+        if document_id is not None:
+            query = query.filter(UserDocument.id == document_id)
+        else:
+            query = query.order_by(
+                UserDocument.created_at.desc(), UserDocument.id.desc()
+            )
+
+        doc = query.first()
         if doc and doc.refresh_dates_and_status():
             self.db.commit()
             self.db.refresh(doc)
