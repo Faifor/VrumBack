@@ -1,5 +1,8 @@
+from decimal import Decimal, InvalidOperation
+
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from num2words import num2words
 
 
 from modules.connection_to_db.database import get_session
@@ -93,6 +96,7 @@ class AdminHandler:
         self._ensure_user_approved(user)
 
         update_payload = body.model_dump(exclude_unset=True)
+        update_payload.pop("contract_number", None)
         has_updates = bool(update_payload)
 
         doc = self._get_latest_user_document(user_id)
@@ -110,6 +114,13 @@ class AdminHandler:
         if not has_updates:
             return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
 
+        if "amount" in update_payload:
+            generated_amount_text = self._generate_amount_text(
+                update_payload.get("amount")
+            )
+            if generated_amount_text:
+                update_payload["amount_text"] = generated_amount_text
+
         encrypted_data = encrypt_document_fields(
             update_payload,
             self.cipher,
@@ -126,6 +137,7 @@ class AdminHandler:
             doc.filled_date = body.filled_date
 
         doc.refresh_dates_and_status()
+        self._ensure_contract_number(doc)
 
         self.db.commit()
         self.db.refresh(doc)
@@ -223,6 +235,39 @@ class AdminHandler:
         new_doc.user = user
         self.db.add(new_doc)
         return new_doc
+
+    def _ensure_contract_number(self, doc: UserDocument) -> None:
+        if doc.contract_number:
+            return
+
+        if doc.id is None:
+            self.db.flush()
+
+        total_user_documents = (
+            self.db.query(UserDocument)
+            .filter(UserDocument.user_id == doc.user_id)
+            .count()
+        )
+
+        contract_number = f"{doc.user_id}.{doc.id}.{total_user_documents}"
+        doc.contract_number = self.cipher.encrypt(contract_number)
+
+    def _generate_amount_text(self, amount: str | int | float | None) -> str | None:
+        if amount is None:
+            return None
+
+        normalized = str(amount).strip().replace(" ", "").replace("\u00a0", "")
+        normalized = normalized.replace(",", ".")
+
+        if not normalized:
+            return None
+
+        try:
+            numeric_value = int(Decimal(normalized))
+        except (InvalidOperation, ValueError):
+            return None
+
+        return num2words(numeric_value, lang="ru")
     
     def _ensure_user_approved(self, user: User) -> None:
         if user.status != DocumentStatusEnum.APPROVED:
