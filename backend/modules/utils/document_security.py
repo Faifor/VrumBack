@@ -26,8 +26,8 @@ _PERSONAL_FIELDS = {
     "bank_account",
 }
 
-# Fields that must remain unencrypted because they are stored as numeric types.
-_NON_ENCRYPTED_FIELDS = {"inn", "passport", "bank_account", "amount"}
+# Numeric-like fields that should be converted back to integers after decryption.
+_NUMERIC_FIELDS = {"inn", "passport", "bank_account", "amount"}
 
 _DATE_FIELDS = {"filled_date", "end_date"}
 _ENCRYPTED_DOCUMENT_FIELDS = {
@@ -120,9 +120,6 @@ def encrypt_document_fields(
 
 
         value = data.get(field)
-        if field in _NON_ENCRYPTED_FIELDS:
-            encrypted[field] = value
-            continue
         if field in _DATE_FIELDS:
             encrypted[field] = value
             continue
@@ -145,10 +142,12 @@ def decrypt_user_fields(
     decrypted: dict[str, str | None] = {}
     for field in _PERSONAL_FIELDS:
         raw_value = getattr(user, field)
-        if field in _NON_ENCRYPTED_FIELDS:
-            decrypted[field] = _normalize_numeric(raw_value)
+        decrypted_value = cipher.decrypt(raw_value)
+
+        if field in _NUMERIC_FIELDS:
+            decrypted[field] = _normalize_numeric(decrypted_value)
         else:
-            decrypted[field] = cipher.decrypt(raw_value)
+            decrypted[field] = decrypted_value
     return decrypted
 
 
@@ -158,12 +157,14 @@ def decrypt_document_fields(
     decrypted: dict[str, Any] = {}
     for field in _DOCUMENT_FIELDS:
         value = getattr(doc, field)
-        if field in _NON_ENCRYPTED_FIELDS:
-            decrypted[field] = _normalize_numeric(value)
-        elif field in _DATE_FIELDS:
+        if field in _DATE_FIELDS:
             decrypted[field] = value
         else:
-            decrypted[field] = cipher.decrypt(value)
+            decrypted_value = cipher.decrypt(value)
+            if field in _NUMERIC_FIELDS:
+                decrypted[field] = _normalize_numeric(decrypted_value)
+            else:
+                decrypted[field] = decrypted_value
     return decrypted
 
 

@@ -20,7 +20,13 @@ def _validate_digits_only(value: str | int | None, field_name: str) -> int | Non
     if value is None:
         return None
 
-    normalized = str(value).strip()
+    normalized = (
+        str(value)
+        .strip()
+        .replace(" ", "")
+        .replace("\u00a0", "")
+        .replace(",", "")
+    )
     if not normalized.isdigit():
         raise ValueError(f"{field_name} должен содержать только целые числа")
     return int(normalized)
@@ -31,14 +37,14 @@ class UserDocumentUserUpdate(BaseModel):
     inn: int = Field(
         ...,
         description="Только цифры",
-        examples=[7736050003],
+        examples=[0],
     )
     registration_address: str
     residential_address: str
     passport: int = Field(
         ...,
         description="Только цифры",
-        examples=[4500123456],
+        examples=[0],
     )
     phone: str = Field(
         ...,
@@ -48,7 +54,7 @@ class UserDocumentUserUpdate(BaseModel):
     bank_account: int | None = Field(
         default=None,
         description="Только цифры, заполняется пользователем при наличии",
-        examples=[40817810099910004312],
+        examples=[0],
     )
 
     @field_validator("inn", "passport", "bank_account", mode="before")
@@ -85,7 +91,7 @@ class UserDocumentAdminUpdate(BaseModel):
     amount: int | None = Field(
         default=None,
         description="Только цифры",
-        examples=[100000],
+        examples=[0],
     )
     amount_text: str | None = Field(
         default=None,

@@ -265,8 +265,13 @@ class AdminHandler:
         if amount is None:
             return None
 
-        normalized = str(amount).strip().replace(" ", "").replace("\u00a0", "")
-        normalized = normalized.replace(",", ".")
+        normalized = (
+            str(amount)
+            .strip()
+            .replace(" ", "")
+            .replace("\u00a0", "")
+            .replace(",", "")
+        )
 
         if not normalized:
             return None

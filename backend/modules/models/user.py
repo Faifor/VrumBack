@@ -14,12 +14,12 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
 
     full_name = Column(String, nullable=True)
-    inn = Column(BigInteger, nullable=True)
+    inn = Column(String, nullable=True)
     registration_address = Column(String, nullable=True)
     residential_address = Column(String, nullable=True)
-    passport = Column(BigInteger, nullable=True)
+    passport = Column(String, nullable=True)
     phone = Column(String, nullable=True)
-    bank_account = Column(Numeric(precision=32, scale=0), nullable=True)
+    bank_account = Column(String, nullable=True)
     failed_login_attempts = Column(Integer, nullable=False, default=0, server_default="0")
     last_failed_login_at = Column(DateTime(timezone=True), nullable=True)
 

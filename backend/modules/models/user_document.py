@@ -1,16 +1,6 @@
 from datetime import date, timedelta
 
-from sqlalchemy import (
-    Boolean,
-    Column,
-    Date,
-    DateTime,
-    ForeignKey,
-    Integer,
-    Numeric,
-    String,
-    Text,
-)
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -28,7 +18,7 @@ class UserDocument(Base):
     akb1_serial = Column(String, nullable=True)
     akb2_serial = Column(String, nullable=True)
     akb3_serial = Column(String, nullable=True)
-    amount = Column(Numeric(precision=18, scale=0), nullable=True)
+    amount = Column(String, nullable=True)
     amount_text = Column(String, nullable=True)
     weeks_count = Column(Integer, nullable=True)
     filled_date = Column(Date, nullable=True)
