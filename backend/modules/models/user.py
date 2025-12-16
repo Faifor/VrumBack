@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum
+from sqlalchemy import BigInteger, Column, DateTime, Enum, Integer, Numeric, String
 from sqlalchemy.orm import relationship
 
 from modules.connection_to_db.database import Base
@@ -20,6 +20,8 @@ class User(Base):
     passport = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     bank_account = Column(String, nullable=True)
+    failed_login_attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    last_failed_login_at = Column(DateTime(timezone=True), nullable=True)
 
     status = Column(
         Enum(DocumentStatusEnum, name="document_status_enum", native_enum=False),

@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from sqlalchemy import Boolean, Column, Date, Integer, String, DateTime, Text, ForeignKey
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
