@@ -13,6 +13,7 @@ from modules.schemas.document_schemas import (
     DocumentRejectRequest,
     DocumentStatus,
     UserDocumentAdminUpdate,
+    UserDocumentAdminUpdateInput,
     UserDocumentRead,
     UserWithDocumentSummary,
 )
@@ -90,7 +91,7 @@ class AdminHandler:
         return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
 
     def update_user_document(
-        self, user_id: int, body: UserDocumentAdminUpdate
+        self, user_id: int, body: UserDocumentAdminUpdateInput
     ) -> UserDocumentRead:
         user = self._get_user_or_404(user_id)
         self._ensure_user_approved(user)
