@@ -40,3 +40,10 @@ class User(Base):
         cascade="all, delete-orphan",
         lazy="joined",
     )
+
+    password_reset_requests = relationship(
+        "PasswordResetRequest",
+        back_populates="user",
+        uselist=True,
+        cascade="all, delete-orphan",
+    )
