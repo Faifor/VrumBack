@@ -13,3 +13,13 @@ class TokenData(BaseModel):
 class UserAuthRequest(BaseModel):
     email: EmailStr = Field(...)
     password: str = Field(...)
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr = Field(...)
+
+
+class PasswordResetConfirm(BaseModel):
+    email: EmailStr = Field(...)
+    code: str = Field(...)
+    new_password: str = Field(...)
