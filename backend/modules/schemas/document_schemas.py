@@ -64,7 +64,10 @@ class UserDocumentUserUpdate(BaseModel):
 
     @field_validator("phone")
     @classmethod
-    def validate_phone(cls, value: str):
+    def validate_phone(cls, value: str | None):
+        if value is None:
+            return None
+
         normalized = str(value).strip()
 
         if not normalized.startswith("+"):
@@ -128,6 +131,13 @@ class UserDocumentBase(UserDocumentUserUpdate, UserDocumentAdminUpdate):
 
 
 class UserDocumentRead(UserDocumentBase):
+    full_name: str | None = None
+    inn: int | None = None
+    registration_address: str | None = None
+    residential_address: str | None = None
+    passport: int | None = None
+    phone: str | None = None
+    bank_account: int | None = None
     id: int | None = None
     status: DocumentStatus
     rejection_reason: str | None = None
