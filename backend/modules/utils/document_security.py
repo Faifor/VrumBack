@@ -215,12 +215,12 @@ def serialize_document_for_response(
     rejection_reason = getattr(user, "rejection_reason", None)
 
     return {
-        "full_name": personal_data.get("full_name") or "",
-        "inn": personal_data.get("inn") or "",
-        "registration_address": personal_data.get("registration_address") or "",
-        "residential_address": personal_data.get("residential_address") or "",
-        "passport": personal_data.get("passport") or "",
-        "phone": personal_data.get("phone") or "",
+        "full_name": personal_data.get("full_name"),
+        "inn": personal_data.get("inn"),
+        "registration_address": personal_data.get("registration_address"),
+        "residential_address": personal_data.get("residential_address"),
+        "passport": personal_data.get("passport"),
+        "phone": personal_data.get("phone"),
         "bank_account": personal_data.get("bank_account"),
         "status": status.value if hasattr(status, "value") else str(status)
         if status

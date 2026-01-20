@@ -164,26 +164,29 @@ class AdminHandler:
         self, user_id: int, body: DocumentRejectRequest
     ) -> UserDocumentRead:
         user = self._get_user_or_404(user_id)
-        doc = self._get_user_document_or_404(user_id)
+        doc = self._get_latest_user_document(user_id)
 
         user.status = DocumentStatusEnum.REJECTED
         user.rejection_reason = body.reason
-        doc.contract_text = None
-        doc.weeks_count = None
-        doc.filled_date = None
-        doc.end_date = None
-        doc.active = False
+        if doc:
+            doc.contract_text = None
+            doc.weeks_count = None
+            doc.filled_date = None
+            doc.end_date = None
+            doc.active = False
 
         for field in _PERSONAL_FIELDS:
             setattr(user, field, None)
 
-        for field in _ADMIN_DOCUMENT_FIELDS:
-            setattr(doc, field, None)
+        if doc:
+            for field in _ADMIN_DOCUMENT_FIELDS:
+                setattr(doc, field, None)
 
         self.db.commit()
-        self.db.refresh(doc)
         self.db.refresh(user)
-        return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
+        if doc:
+            self.db.refresh(doc)
+        return UserDocumentRead(**serialize_document_for_response(doc, self.cipher, user))
 
     def get_contract_docx_path(self, user_id: int, document_id: int) -> str:
         user = self._get_user_or_404(user_id)

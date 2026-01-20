@@ -62,6 +62,21 @@ class UserDocumentHandler:
 
     def upsert_my_document(self, data: UserDocumentUserUpdate):
         doc = self._get_my_document()
+        if self.user.status == DocumentStatusEnum.PENDING:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Данные отправлены на проверку и не могут быть изменены",
+            )
+        if self.user.status == DocumentStatusEnum.APPROVED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Данные одобрены и не могут быть изменены",
+            )
+        encrypted_data = encrypt_document_fields(
+            data.model_dump(exclude_unset=True),
+            self.cipher,
+            allowed_fields=_PERSONAL_FIELDS,
+        )
         encrypted_data = encrypt_document_fields(
             data.model_dump(exclude_unset=True),
             self.cipher,
@@ -80,6 +95,16 @@ class UserDocumentHandler:
 
     def submit_my_document(self):
         doc = self._get_my_document()
+        if self.user.status == DocumentStatusEnum.PENDING:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Данные уже отправлены на проверку",
+            )
+        if self.user.status == DocumentStatusEnum.APPROVED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Данные уже одобрены",
+            )
 
         personal_data = decrypt_user_fields(self.user, self.cipher)
         missing_fields = [field for field in _PERSONAL_FIELDS if not personal_data.get(field)]
