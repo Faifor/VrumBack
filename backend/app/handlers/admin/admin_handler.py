@@ -64,24 +64,12 @@ class AdminHandler:
         result: list[UserWithDocumentSummary] = []
 
         for u in users:
-            personal_data = decrypt_user_fields(u, self.cipher)
-            result.append(
-                UserWithDocumentSummary(
-                    id=u.id,
-                    email=u.email,
-                    full_name=personal_data.get("full_name"),
-                    inn=personal_data.get("inn"),
-                    registration_address=personal_data.get("registration_address"),
-                    residential_address=personal_data.get("residential_address"),
-                    passport=personal_data.get("passport"),
-                    phone=personal_data.get("phone"),
-                    bank_account=personal_data.get("bank_account"),
-                    role=u.role,
-                    status=DocumentStatus(u.status),
-                    rejection_reason=u.rejection_reason,
-                )
-            )
+            result.append(self._build_user_summary(u))
         return result
+
+    def get_user_summary(self, user_id: int) -> UserWithDocumentSummary:
+        user = self._get_user_or_404(user_id)
+        return self._build_user_summary(user)
 
     def get_user_document(self, user_id: int, document_id: int) -> UserDocumentRead:
         user = self._get_user_or_404(user_id)
@@ -212,6 +200,23 @@ class AdminHandler:
                 detail="Пользователь не найден",
             )
         return user
+
+    def _build_user_summary(self, user: User) -> UserWithDocumentSummary:
+        personal_data = decrypt_user_fields(user, self.cipher)
+        return UserWithDocumentSummary(
+            id=user.id,
+            email=user.email,
+            full_name=personal_data.get("full_name"),
+            inn=personal_data.get("inn"),
+            registration_address=personal_data.get("registration_address"),
+            residential_address=personal_data.get("residential_address"),
+            passport=personal_data.get("passport"),
+            phone=personal_data.get("phone"),
+            bank_account=personal_data.get("bank_account"),
+            role=user.role,
+            status=DocumentStatus(user.status),
+            rejection_reason=user.rejection_reason,
+        )
 
     def _get_user_document_or_404(
         self, user_id: int, document_id: int | None = None
