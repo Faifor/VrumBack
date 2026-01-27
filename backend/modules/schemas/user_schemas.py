@@ -1,4 +1,8 @@
 from pydantic import BaseModel, EmailStr, Field
+from typing import Literal
+
+
+DocumentStatus = Literal["draft", "pending", "approved", "rejected"]
 
 
 class UserCreate(BaseModel):
@@ -17,6 +21,8 @@ class UserRead(BaseModel):
     phone: str | None = Field(default=None)
     bank_account: int | None = Field(default=None, description="Только цифры")
     role: str = Field(...)
+    status: DocumentStatus = Field(...)
+    rejection_reason: str | None = Field(default=None)
 
     model_config = {"from_attributes": True}
 

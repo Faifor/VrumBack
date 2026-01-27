@@ -97,6 +97,8 @@ class AuthHandler:
             "id": current_user.id,
             "email": current_user.email,
             "role": current_user.role,
+            "status": current_user.status,
+            "rejection_reason": current_user.rejection_reason,
             **decrypted_fields,
         }
         return UserRead(**payload)
