@@ -59,8 +59,13 @@ class AdminHandler:
         self.admin = admin
         self.cipher = get_sensitive_data_cipher()
 
-    def list_users(self) -> list[UserWithDocumentSummary]:
-        users = self.db.query(User).filter(User.role == "user").all()
+    def list_users(
+        self, status_filter: DocumentStatusEnum | None = None
+    ) -> list[UserWithDocumentSummary]:
+        query = self.db.query(User).filter(User.role == "user")
+        if status_filter is not None:
+            query = query.filter(User.status == status_filter)
+        users = query.all()
         result: list[UserWithDocumentSummary] = []
 
         for u in users:
