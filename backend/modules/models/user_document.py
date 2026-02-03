@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Session, relationship
 
 from modules.connection_to_db.database import Base
 
@@ -32,7 +32,7 @@ class UserDocument(Base):
 
     user = relationship("User", back_populates="documents")
 
-    def refresh_dates_and_status(self) -> bool:
+    def refresh_dates_and_status(self, update_active: bool = True) -> bool:
         """Calculate ``end_date`` and ``active`` flags based on stored dates.
 
         Returns ``True`` when either value has changed, so callers can decide
@@ -50,14 +50,53 @@ class UserDocument(Base):
             self.end_date = None
             changed = True
 
-        today = date.today()
-        new_active = bool(
-            self.filled_date
-            and self.end_date
-            and self.filled_date <= today <= self.end_date
-        )
-        if self.active is None or self.active != new_active:
-            self.active = new_active
-            changed = True
+        if update_active:
+            today = date.today()
+            new_active = bool(
+                self.filled_date
+                and self.end_date
+                and self.filled_date <= today <= self.end_date
+            )
+            if self.active is None or self.active != new_active:
+                self.active = new_active
+                changed = True
 
         return changed
+
+    @classmethod
+    def refresh_user_documents_status(
+        cls, db: Session, user_id: int
+    ) -> list["UserDocument"]:
+        docs = (
+            db.query(cls)
+            .filter(cls.user_id == user_id)
+            .order_by(cls.created_at.desc(), cls.id.desc())
+            .all()
+        )
+
+        today = date.today()
+        changed = False
+        for doc in docs:
+            if doc.refresh_dates_and_status(update_active=False):
+                changed = True
+
+        active_set = False
+        for doc in docs:
+            in_range = bool(
+                doc.filled_date
+                and doc.end_date
+                and doc.filled_date <= today <= doc.end_date
+            )
+            new_active = in_range and not active_set
+            if new_active:
+                active_set = True
+            if doc.active != new_active:
+                doc.active = new_active
+                changed = True
+
+        if changed:
+            db.commit()
+            for doc in docs:
+                db.refresh(doc)
+
+        return docs

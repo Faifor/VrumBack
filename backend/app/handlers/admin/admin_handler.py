@@ -83,6 +83,18 @@ class AdminHandler:
         doc = self._get_user_document_or_404(user_id, document_id)
         return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
 
+    def list_user_contracts(self, user_id: int):
+        user = self._get_user_or_404(user_id)
+        self._ensure_user_approved(user)
+        docs = UserDocument.refresh_user_documents_status(self.db, user_id)
+        return [
+            {
+                **serialize_document_for_response(doc, self.cipher, user),
+                "contract_docx_url": f"/admin/users/{user_id}/contract-docx/{doc.id}",
+            }
+            for doc in docs
+        ]
+
     def update_user_document(
         self, user_id: int, body: UserDocumentAdminUpdateInput
     ) -> UserDocumentRead:
@@ -130,10 +142,11 @@ class AdminHandler:
         if body.filled_date is not None or "filled_date" in body.model_fields_set:
             doc.filled_date = body.filled_date
 
-        doc.refresh_dates_and_status()
+        doc.refresh_dates_and_status(update_active=False)
         self._ensure_contract_number(doc)
 
         self.db.commit()
+        UserDocument.refresh_user_documents_status(self.db, user_id)
         self.db.refresh(doc)
         return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
 
@@ -237,20 +250,10 @@ class AdminHandler:
     def _get_latest_user_document(
         self, user_id: int, document_id: int | None = None
     ) -> UserDocument | None:
-        query = self.db.query(UserDocument).filter(UserDocument.user_id == user_id)
-
+        docs = UserDocument.refresh_user_documents_status(self.db, user_id)
         if document_id is not None:
-            query = query.filter(UserDocument.id == document_id)
-        else:
-            query = query.order_by(
-                UserDocument.created_at.desc(), UserDocument.id.desc()
-            )
-
-        doc = query.first()
-        if doc and doc.refresh_dates_and_status():
-            self.db.commit()
-            self.db.refresh(doc)
-        return doc
+            return next((doc for doc in docs if doc.id == document_id), None)
+        return docs[0] if docs else None
 
     def _create_document(self, user_id: int, user: User) -> UserDocument:
         new_doc = UserDocument(user_id=user_id)
