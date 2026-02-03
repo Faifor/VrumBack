@@ -39,26 +39,27 @@ class UserDocumentHandler:
         self.cipher = get_sensitive_data_cipher()
 
     def _get_my_document(self, document_id: int | None = None) -> UserDocument | None:
-        query = self.db.query(UserDocument).filter(
-            UserDocument.user_id == self.user.id
-        )
-
+        docs = UserDocument.refresh_user_documents_status(self.db, self.user.id)
         if document_id is not None:
-            query = query.filter(UserDocument.id == document_id)
-        else:
-            query = query.order_by(
-                UserDocument.created_at.desc(), UserDocument.id.desc()
-            )
-
-        doc = query.first()
-        if doc and doc.refresh_dates_and_status():
-            self.db.commit()
-            self.db.refresh(doc)
-        return doc
+            return next((doc for doc in docs if doc.id == document_id), None)
+        return docs[0] if docs else None
 
     def get_my_document(self, document_id: int):
         doc = self._get_my_document(document_id)
         return serialize_document_for_response(doc, self.cipher, self.user)
+
+    def list_my_contracts(self):
+        docs = UserDocument.refresh_user_documents_status(self.db, self.user.id)
+        contract_url_available = self.user.status == DocumentStatusEnum.APPROVED
+        return [
+            {
+                **serialize_document_for_response(doc, self.cipher, self.user),
+                "contract_docx_url": (
+                    f"/users/me/contract-docx/{doc.id}" if contract_url_available else None
+                ),
+            }
+            for doc in docs
+        ]
 
     def upsert_my_document(self, data: UserDocumentUserUpdate):
         doc = self._get_my_document()

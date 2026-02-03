@@ -172,7 +172,7 @@ def serialize_document_for_response(
     doc: "UserDocument | None", cipher: SensitiveDataCipher, user: "User | None" = None
 ) -> dict[str, Any]:
     if doc:
-        doc.refresh_dates_and_status()
+        doc.refresh_dates_and_status(update_active=False)
         user = user or doc.user
         doc_data = decrypt_document_fields(doc, cipher)
         filled_date = doc_data.get("filled_date")

@@ -147,6 +147,10 @@ class UserDocumentRead(UserDocumentBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserContractItem(UserDocumentRead):
+    contract_docx_url: str | None = None
+
+
 class DocumentRejectRequest(BaseModel):
     reason: str
 
