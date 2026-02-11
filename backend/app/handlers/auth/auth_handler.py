@@ -21,7 +21,13 @@ from modules.utils.document_security import (
     get_sensitive_data_cipher,
 )
 from modules.utils.email_utils import send_password_reset_code
-from modules.utils.jwt_utils import create_access_token
+from jose import JWTError
+
+from modules.utils.jwt_utils import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+)
 from modules.utils.password_utils import hash_password, verify_password
 
 
@@ -81,14 +87,49 @@ class AuthHandler:
 
         self._reset_failed_attempts(user)
 
-        expire = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        return self._build_token_pair(user.id)
 
-        token = create_access_token(
-            data={"sub": str(user.id)},
-            expire_delta=expire,
+    async def refresh(self, refresh_token: str) -> Token:
+        try:
+            payload = decode_token(refresh_token)
+            if payload.get("type") != "refresh":
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid refresh token",
+                )
+
+            user_id = int(payload.get("sub"))
+        except HTTPException:
+            raise
+        except (JWTError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token",
+            )
+
+        user = self.session.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+            )
+
+        return self._build_token_pair(user.id)
+
+    def _build_token_pair(self, user_id: int) -> Token:
+        access_expire = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        refresh_expire = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+
+        access_token = create_access_token(
+            data={"sub": str(user_id)},
+            expire_delta=access_expire,
+        )
+        refresh_token = create_refresh_token(
+            data={"sub": str(user_id)},
+            expire_delta=refresh_expire,
         )
 
-        return Token(access_token=token)
+        return Token(access_token=access_token, refresh_token=refresh_token)
 
     async def me(self, current_user: User) -> UserRead:
         cipher = get_sensitive_data_cipher()
