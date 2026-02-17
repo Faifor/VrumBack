@@ -25,6 +25,12 @@ class PaymentHandler:
 
     async def create_payment(self, data: CreatePaymentRequest, current_user: User) -> CreatePaymentResponse:
         order = self._get_or_create_order(current_user, data.order_id, data.amount, data.currency, data.description)
+        receipt = self._build_receipt(
+            user=current_user,
+            amount=data.amount,
+            currency=data.currency,
+            description=data.description or f"Order #{order.id}",
+        )
 
         payload = {
             "amount": {"value": f"{data.amount:.2f}", "currency": data.currency.upper()},
@@ -36,6 +42,7 @@ class PaymentHandler:
             "description": data.description or f"Order #{order.id}",
             "save_payment_method": data.save_payment_method,
             "metadata": {"order_id": str(order.id), "user_id": str(current_user.id)},
+            "receipt": receipt,
         }
 
         result = YooKassaClient().create_payment(payload)
@@ -116,12 +123,19 @@ class PaymentHandler:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Autopay is not enabled")
 
         order = self._get_or_create_order(current_user, data.order_id, data.amount, data.currency, data.description)
+        receipt = self._build_receipt(
+            user=current_user,
+            amount=data.amount,
+            currency=data.currency,
+            description=data.description or f"Autopay order #{order.id}",
+        )
         payload = {
             "amount": {"value": f"{data.amount:.2f}", "currency": data.currency.upper()},
             "capture": True,
             "payment_method_id": current_user.autopay_payment_method_id,
             "description": data.description or f"Autopay order #{order.id}",
             "metadata": {"order_id": str(order.id), "user_id": str(current_user.id), "autopay": "1"},
+            "receipt": receipt,
         }
 
         result = YooKassaClient().create_payment(payload)
@@ -244,3 +258,30 @@ class PaymentHandler:
             "canceled": "canceled",
         }
         order.status = mapping.get(payment_status, payment_status)
+
+    def _build_receipt(self, user: User, amount: Decimal, currency: str, description: str) -> dict:
+        customer: dict[str, str] = {}
+        if user.email:
+            customer["email"] = user.email
+        if user.phone:
+            customer["phone"] = user.phone
+
+        if not customer:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="YooKassa receipt requires user email or phone",
+            )
+
+        return {
+            "customer": customer,
+            "items": [
+                {
+                    "description": description[:128],
+                    "quantity": "1.00",
+                    "amount": {"value": f"{amount:.2f}", "currency": currency.upper()},
+                    "vat_code": 1,
+                    "payment_mode": "full_payment",
+                    "payment_subject": "service",
+                }
+            ],
+        }
