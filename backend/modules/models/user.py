@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Column, DateTime, Enum, Integer, Numeric, String
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Enum, Integer, Numeric, String, text
 from sqlalchemy.orm import relationship
 
 from modules.connection_to_db.database import Base
@@ -33,6 +33,9 @@ class User(Base):
 
     role = Column(String, nullable=False, default="user")
 
+    autopay_enabled = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    autopay_payment_method_id = Column(String, nullable=True)
+
     documents = relationship(
         "UserDocument",
         back_populates="user",
@@ -47,3 +50,7 @@ class User(Base):
         uselist=True,
         cascade="all, delete-orphan",
     )
+
+    orders = relationship("Order", back_populates="user", uselist=True, cascade="all, delete-orphan")
+
+    payments = relationship("Payment", back_populates="user", uselist=True, cascade="all, delete-orphan")

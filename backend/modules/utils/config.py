@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     PASSWORD_RESET_LOCKOUT_SECONDS: int = Field(default=20)
     SECURE_STORAGE_DIR: Path = BASE_DIR / "secure_storage"
     CONTRACT_TEMPLATE_FILENAME: str = "contract_template.docx"
+    YOOKASSA_SHOP_ID: str | None = Field(default=None)
+    YOOKASSA_SECRET_KEY: str | None = Field(default=None)
+    YOOKASSA_API_URL: str = Field(default="https://api.yookassa.ru/v3")
+    YOOKASSA_RETURN_URL: str | None = Field(default=None)
+    YOOKASSA_WEBHOOK_SECRET: str | None = Field(default=None)
 
     class Config:
         # Use the project-level .env file regardless of the working directory
