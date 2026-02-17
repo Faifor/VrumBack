@@ -186,12 +186,13 @@ class PaymentHandler:
 
     def _get_or_create_order(self, user: User, order_id: int | None, amount: Decimal, currency: str, description: str | None) -> Order:
         if order_id is not None:
-            order = self._get_order_for_user(order_id, user.id)
-            order.amount = amount
-            order.currency = currency.upper()
-            if description is not None:
-                order.description = description
-            return order
+            order = self.session.query(Order).filter(Order.id == order_id, Order.user_id == user.id).first()
+            if order:
+                order.amount = amount
+                order.currency = currency.upper()
+                if description is not None:
+                    order.description = description
+                return order
 
         order = Order(
             user_id=user.id,
