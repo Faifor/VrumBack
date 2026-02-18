@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Query
 
 from app.handlers.payment_handler import PaymentHandler
 from modules.models.user import User
@@ -20,9 +20,10 @@ router = APIRouter()
 async def create_payment(
     data: CreatePaymentRequest,
     current_user: User = Depends(get_current_user),
+    token: str | None = Query(default=None),
     handler: PaymentHandler = Depends(),
 ):
-    return await handler.create_payment(data, current_user)
+    return await handler.webhook(payload, authorization, token)
 
 
 @router.post("/yookassa/webhook", response_model=WebhookResponse)
