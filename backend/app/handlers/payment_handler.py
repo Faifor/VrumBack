@@ -61,16 +61,19 @@ class PaymentHandler:
         )
 
     async def webhook(self, payload: dict, authorization: str | None, token: str | None = None) -> dict:
-        if settings.YOOKASSA_WEBHOOK_SECRET:
-            bearer_valid = authorization == f"Bearer {settings.YOOKASSA_WEBHOOK_SECRET}"
-            query_valid = token == settings.YOOKASSA_WEBHOOK_SECRET
+        configured_secret = (settings.YOOKASSA_WEBHOOK_SECRET or "").strip()
+        if configured_secret:
+            normalized_authorization = (authorization or "").strip()
+            normalized_token = (token or "").strip()
+            bearer_valid = normalized_authorization == f"Bearer {configured_secret}"
+            query_valid = normalized_token == configured_secret
             if not bearer_valid and not query_valid:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook token")
 
         payment_object = payload.get("object", {})
         yookassa_payment_id = payment_object.get("id")
         if not yookassa_payment_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing payment id")
+            return {"detail": "Missing payment id, ignored"}
 
         payment = self.session.query(Payment).filter(Payment.yookassa_payment_id == yookassa_payment_id).first()
         if not payment:
