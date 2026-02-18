@@ -60,9 +60,12 @@ class PaymentHandler:
             confirmation_url=payment.confirmation_url,
         )
 
-    async def webhook(self, payload: dict, authorization: str | None) -> dict:
-        if settings.YOOKASSA_WEBHOOK_SECRET and authorization != f"Bearer {settings.YOOKASSA_WEBHOOK_SECRET}":
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook token")
+    async def webhook(self, payload: dict, authorization: str | None, token: str | None = None) -> dict:
+        if settings.YOOKASSA_WEBHOOK_SECRET:
+            bearer_valid = authorization == f"Bearer {settings.YOOKASSA_WEBHOOK_SECRET}"
+            query_valid = token == settings.YOOKASSA_WEBHOOK_SECRET
+            if not bearer_valid and not query_valid:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook token")
 
         payment_object = payload.get("object", {})
         yookassa_payment_id = payment_object.get("id")
