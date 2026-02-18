@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, Request
 
 from app.handlers.payment_handler import PaymentHandler
 from modules.models.user import User
@@ -20,18 +20,20 @@ router = APIRouter()
 async def create_payment(
     data: CreatePaymentRequest,
     current_user: User = Depends(get_current_user),
-    token: str | None = Query(default=None),
     handler: PaymentHandler = Depends(),
 ):
-    return await handler.webhook(payload, authorization, token)
+    return await handler.create_payment(data, current_user)
 
+@router.get("/yookassa/webhook", response_model=WebhookResponse)
+@router.get("/yookassa/webhook/", response_model=WebhookResponse, include_in_schema=False)
+async def yookassa_webhook_health():
+    return {"detail": "ok"}
 
 @router.post("/yookassa/webhook", response_model=WebhookResponse)
 @router.post("/yookassa/webhook/", response_model=WebhookResponse, include_in_schema=False)
 async def yookassa_webhook(
     request: Request,
     authorization: str | None = Header(default=None),
-    token: str | None = Query(default=None),
     handler: PaymentHandler = Depends(),
 ):
     try:
@@ -42,7 +44,7 @@ async def yookassa_webhook(
     if not isinstance(payload, dict):
         payload = {}
 
-    return await handler.webhook(payload, authorization, token)
+    return await handler.webhook(payload, authorization)
 
 
 @router.post("/autopay/enable")

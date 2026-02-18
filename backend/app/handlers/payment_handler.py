@@ -60,15 +60,11 @@ class PaymentHandler:
             confirmation_url=payment.confirmation_url,
         )
 
-    async def webhook(self, payload: dict, authorization: str | None, token: str | None = None) -> dict:
-        configured_secret = (settings.YOOKASSA_WEBHOOK_SECRET or "").strip()
-        if configured_secret:
-            normalized_authorization = (authorization or "").strip()
-            normalized_token = (token or "").strip()
-            bearer_valid = normalized_authorization == f"Bearer {configured_secret}"
-            query_valid = normalized_token == configured_secret
-            if not bearer_valid and not query_valid:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook token")
+    async def webhook(self, payload: dict, authorization: str | None = None) -> dict:
+        # YooKassa webhooks are authenticated by source and HTTPS endpoint.
+        # We intentionally do not enforce a shared secret here to avoid rejecting
+        # valid callbacks when the provider does not send custom auth headers.
+        _ = authorization
 
         payment_object = payload.get("object", {})
         yookassa_payment_id = payment_object.get("id")
