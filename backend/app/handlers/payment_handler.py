@@ -1,5 +1,6 @@
 import json
 from decimal import Decimal
+from datetime import date
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -54,6 +55,9 @@ class PaymentHandler:
         result = YooKassaClient().create_payment(payload)
         payment = self._store_payment(order, current_user, amount, data.currency, result, data.save_payment_method, is_autopay=False)
 
+        if data.save_payment_method:
+            current_user.autopay_enabled = True
+
         if schedule_item:
             schedule_item.order_id = order.id
             schedule_item.payment_id = payment.id
@@ -92,6 +96,12 @@ class PaymentHandler:
         payment_method = payment_object.get("payment_method", {})
         if payment_method.get("id"):
             payment.payment_method_id = payment_method["id"]
+
+        if payment.status == "succeeded" and payment.save_payment_method and payment.payment_method_id:
+            user = self.session.query(User).filter(User.id == payment.user_id).first()
+            if user:
+                user.autopay_enabled = True
+                user.autopay_payment_method_id = payment.payment_method_id
 
         order = self.session.query(Order).filter(Order.id == payment.order_id).first()
         if order:
@@ -329,7 +339,11 @@ class PaymentHandler:
 
         next_item = (
             self.session.query(ContractPayment)
-            .filter(ContractPayment.user_id == user_id, ContractPayment.status == "pending")
+            .filter(
+                ContractPayment.user_id == user_id,
+                ContractPayment.status == "pending",
+                ContractPayment.due_date <= date.today(),
+            )
             .order_by(ContractPayment.payment_number.asc())
             .first()
         )
@@ -359,8 +373,9 @@ class PaymentHandler:
         customer: dict[str, str] = {}
         if user.email:
             customer["email"] = user.email
-        if user.phone:
-            customer["phone"] = user.phone
+        normalized_phone = self._normalize_phone(user.phone)
+        if normalized_phone:
+            customer["phone"] = normalized_phone
 
         if not customer:
             raise HTTPException(
@@ -381,3 +396,27 @@ class PaymentHandler:
                 }
             ],
         }
+
+    def _normalize_phone(self, phone: str | None) -> str | None:
+        if not phone:
+            return None
+
+        has_plus = phone.strip().startswith("+")
+        digits = "".join(ch for ch in phone if ch.isdigit())
+        if not digits:
+            return None
+
+        if has_plus:
+            normalized = f"+{digits}"
+        elif len(digits) == 11 and digits.startswith("8"):
+            normalized = f"+7{digits[1:]}"
+        elif len(digits) == 10:
+            normalized = f"+7{digits}"
+        else:
+            normalized = f"+{digits}"
+
+        digit_count = len(normalized.replace("+", ""))
+        if digit_count < 10 or digit_count > 15:
+            return None
+
+        return normalized
