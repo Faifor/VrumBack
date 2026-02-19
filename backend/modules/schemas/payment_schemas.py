@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -6,7 +6,8 @@ from pydantic import BaseModel, Field
 
 class CreatePaymentRequest(BaseModel):
     order_id: int | None = Field(default=None)
-    amount: Decimal = Field(..., gt=0)
+    schedule_payment_id: int | None = Field(default=None)
+    amount: Decimal | None = Field(default=None, gt=0)
     currency: str = Field(default="RUB", min_length=3, max_length=3)
     description: str | None = Field(default=None)
     save_payment_method: bool = Field(default=False)
@@ -31,7 +32,8 @@ class AutopayEnableRequest(BaseModel):
 
 class AutopayChargeRequest(BaseModel):
     order_id: int | None = Field(default=None)
-    amount: Decimal = Field(..., gt=0)
+    schedule_payment_id: int | None = Field(default=None)
+    amount: Decimal | None = Field(default=None, gt=0)
     currency: str = Field(default="RUB", min_length=3, max_length=3)
     description: str | None = Field(default="Автоплатёж")
 
@@ -66,5 +68,19 @@ class OrderRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     payments: list[PaymentRead]
+
+    model_config = {"from_attributes": True}
+
+
+class ContractPaymentRead(BaseModel):
+    id: int
+    document_id: int
+    payment_number: int
+    due_date: date
+    amount: Decimal
+    status: str
+    order_id: int | None
+    payment_id: int | None
+    paid_at: datetime | None
 
     model_config = {"from_attributes": True}

@@ -5,11 +5,12 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from modules.connection_to_db.database import get_session
-from modules.models.payment import Order, Payment
+from modules.models.payment import ContractPayment, Order, Payment
 from modules.models.user import User
 from modules.schemas.payment_schemas import (
     AutopayChargeRequest,
     AutopayEnableRequest,
+    ContractPaymentRead,
     CreatePaymentRequest,
     CreatePaymentResponse,
     OrderRead,
@@ -24,16 +25,21 @@ class PaymentHandler:
         self.session = session
 
     async def create_payment(self, data: CreatePaymentRequest, current_user: User) -> CreatePaymentResponse:
-        order = self._get_or_create_order(current_user, data.order_id, data.amount, data.currency, data.description)
+        schedule_item = self._get_schedule_item_for_user(data.schedule_payment_id, current_user.id)
+        amount = schedule_item.amount if schedule_item else data.amount
+        if amount is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount is required")
+
+        order = self._get_or_create_order(current_user, data.order_id, amount, data.currency, data.description)
         receipt = self._build_receipt(
             user=current_user,
-            amount=data.amount,
+            amount=amount,
             currency=data.currency,
             description=data.description or f"Order #{order.id}",
         )
 
         payload = {
-            "amount": {"value": f"{data.amount:.2f}", "currency": data.currency.upper()},
+            "amount": {"value": f"{amount:.2f}", "currency": data.currency.upper()},
             "capture": True,
             "confirmation": {
                 "type": "redirect",
@@ -46,7 +52,12 @@ class PaymentHandler:
         }
 
         result = YooKassaClient().create_payment(payload)
-        payment = self._store_payment(order, current_user, data.amount, data.currency, result, data.save_payment_method, is_autopay=False)
+        payment = self._store_payment(order, current_user, amount, data.currency, result, data.save_payment_method, is_autopay=False)
+
+        if schedule_item:
+            schedule_item.order_id = order.id
+            schedule_item.payment_id = payment.id
+            schedule_item.status = "processing"
 
         self._sync_order_status(order, payment.status)
         self.session.commit()
@@ -86,7 +97,12 @@ class PaymentHandler:
         if order:
             self._sync_order_status(order, payment.status)
 
+        self._sync_schedule_for_payment(payment)
         self.session.commit()
+
+        if payment.status == "succeeded":
+            await self._charge_next_schedule_payment(payment.user_id)
+        
         return {"detail": "ok"}
 
     async def enable_autopay(self, data: AutopayEnableRequest, current_user: User) -> dict:
@@ -124,15 +140,20 @@ class PaymentHandler:
         if not current_user.autopay_enabled or not current_user.autopay_payment_method_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Autopay is not enabled")
 
-        order = self._get_or_create_order(current_user, data.order_id, data.amount, data.currency, data.description)
+        schedule_item = self._get_schedule_item_for_user(data.schedule_payment_id, current_user.id)
+        amount = schedule_item.amount if schedule_item else data.amount
+        if amount is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount is required")
+
+        order = self._get_or_create_order(current_user, data.order_id, amount, data.currency, data.description)
         receipt = self._build_receipt(
             user=current_user,
-            amount=data.amount,
+            amount=amount,
             currency=data.currency,
             description=data.description or f"Autopay order #{order.id}",
         )
         payload = {
-            "amount": {"value": f"{data.amount:.2f}", "currency": data.currency.upper()},
+            "amount": {"value": f"{amount:.2f}", "currency": data.currency.upper()},
             "capture": True,
             "payment_method_id": current_user.autopay_payment_method_id,
             "description": data.description or f"Autopay order #{order.id}",
@@ -141,7 +162,12 @@ class PaymentHandler:
         }
 
         result = YooKassaClient().create_payment(payload)
-        payment = self._store_payment(order, current_user, data.amount, data.currency, result, True, is_autopay=True)
+        payment = self._store_payment(order, current_user, amount, data.currency, result, True, is_autopay=True)
+
+        if schedule_item:
+            schedule_item.order_id = order.id
+            schedule_item.payment_id = payment.id
+            schedule_item.status = "processing"
 
         self._sync_order_status(order, payment.status)
         self.session.commit()
@@ -193,6 +219,21 @@ class PaymentHandler:
     async def get_order(self, order_id: int, current_user: User) -> OrderRead:
         order = self._get_order_for_user(order_id, current_user.id)
         return OrderRead.model_validate(order)
+    
+    async def list_my_schedule(self, current_user: User) -> list[ContractPaymentRead]:
+        items = (
+            self.session.query(ContractPayment)
+            .filter(ContractPayment.user_id == current_user.id)
+            .order_by(ContractPayment.payment_number.asc())
+            .all()
+        )
+        return [ContractPaymentRead.model_validate(item) for item in items]
+
+    async def get_my_schedule_item(self, schedule_payment_id: int, current_user: User) -> ContractPaymentRead:
+        item = self._get_schedule_item_for_user(schedule_payment_id, current_user.id)
+        if not item:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Schedule payment not found")
+        return ContractPaymentRead.model_validate(item)
 
     def _get_order_for_user(self, order_id: int, user_id: int) -> Order:
         order = self.session.query(Order).filter(Order.id == order_id, Order.user_id == user_id).first()
@@ -251,6 +292,59 @@ class PaymentHandler:
             user.autopay_payment_method_id = payment.payment_method_id
 
         return payment
+
+    def _get_schedule_item_for_user(self, schedule_payment_id: int | None, user_id: int) -> ContractPayment | None:
+        if schedule_payment_id is None:
+            return None
+        item = (
+            self.session.query(ContractPayment)
+            .filter(ContractPayment.id == schedule_payment_id, ContractPayment.user_id == user_id)
+            .first()
+        )
+        if not item:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Schedule payment not found")
+        if item.status == "paid":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Schedule payment already paid")
+        return item
+
+    def _sync_schedule_for_payment(self, payment: Payment) -> None:
+        schedule_item = (
+            self.session.query(ContractPayment)
+            .filter(ContractPayment.payment_id == payment.id)
+            .first()
+        )
+        if not schedule_item:
+            return
+
+        if payment.status == "succeeded":
+            schedule_item.status = "paid"
+            schedule_item.paid_at = payment.updated_at
+        elif payment.status == "canceled":
+            schedule_item.status = "failed"
+
+    async def _charge_next_schedule_payment(self, user_id: int) -> None:
+        user = self.session.query(User).filter(User.id == user_id).first()
+        if not user or not user.autopay_enabled or not user.autopay_payment_method_id:
+            return
+
+        next_item = (
+            self.session.query(ContractPayment)
+            .filter(ContractPayment.user_id == user_id, ContractPayment.status == "pending")
+            .order_by(ContractPayment.payment_number.asc())
+            .first()
+        )
+        if not next_item:
+            return
+
+        await self.charge_autopay(
+            AutopayChargeRequest(
+                schedule_payment_id=next_item.id,
+                amount=next_item.amount,
+                currency="RUB",
+                description=f"Автосписание по графику #{next_item.payment_number}",
+            ),
+            user,
+        )
 
     def _sync_order_status(self, order: Order, payment_status: str) -> None:
         mapping = {

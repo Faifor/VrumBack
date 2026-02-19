@@ -24,6 +24,7 @@ class UserDocument(Base):
     filled_date = Column(Date, nullable=True)
     end_date = Column(Date, nullable=True)
     active = Column(Boolean, nullable=False, default=False, server_default="0")
+    signed = Column(Boolean, nullable=False, default=False, server_default="0")
 
     contract_text = Column(Text, nullable=True)
 

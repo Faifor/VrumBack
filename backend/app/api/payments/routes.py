@@ -7,6 +7,7 @@ from modules.schemas.payment_schemas import (
     AutopayEnableRequest,
     CreatePaymentRequest,
     CreatePaymentResponse,
+    ContractPaymentRead,
     OrderRead,
     RecalcRequest,
     WebhookResponse,
@@ -15,6 +16,21 @@ from modules.utils.jwt_utils import get_current_user
 
 router = APIRouter()
 
+@router.get("/payments/schedule", response_model=list[ContractPaymentRead])
+async def my_schedule(
+    current_user: User = Depends(get_current_user),
+    handler: PaymentHandler = Depends(),
+):
+    return await handler.list_my_schedule(current_user)
+
+
+@router.get("/payments/schedule/{schedule_payment_id}", response_model=ContractPaymentRead)
+async def my_schedule_item(
+    schedule_payment_id: int,
+    current_user: User = Depends(get_current_user),
+    handler: PaymentHandler = Depends(),
+):
+    return await handler.get_my_schedule_item(schedule_payment_id, current_user)
 
 @router.post("/payments/create", response_model=CreatePaymentResponse)
 async def create_payment(
