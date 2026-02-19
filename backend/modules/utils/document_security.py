@@ -190,6 +190,7 @@ def serialize_document_for_response(
             "filled_date": _format_date_for_response(filled_date),
             "end_date": _format_date_for_response(end_date),
             "active": bool(doc.active),
+            "signed": bool(doc.signed),
             "contract_text": doc.contract_text,
         }
     else:
@@ -206,6 +207,7 @@ def serialize_document_for_response(
             "filled_date": None,
             "end_date": None,
             "active": False,
+            "signed": False,
             "contract_text": None,
         }
 

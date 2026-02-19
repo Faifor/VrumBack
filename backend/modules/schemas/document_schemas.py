@@ -142,6 +142,7 @@ class UserDocumentRead(UserDocumentBase):
     status: DocumentStatus
     rejection_reason: str | None = None
     active: bool = False
+    signed: bool = False
     contract_text: str | None = None
 
     model_config = ConfigDict(from_attributes=True)

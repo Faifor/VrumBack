@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -58,3 +59,25 @@ class Payment(Base):
 
     order = relationship("Order", back_populates="payments")
     user = relationship("User", back_populates="payments")
+
+
+class ContractPayment(Base):
+    __tablename__ = "contract_payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_id = Column(Integer, ForeignKey("user_documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    payment_number = Column(Integer, nullable=False)
+    due_date = Column(Date, nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False)
+    status = Column(String(32), nullable=False, default="pending", server_default="pending", index=True)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    payment_id = Column(Integer, ForeignKey("payments.id", ondelete="SET NULL"), nullable=True)
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+    document = relationship("UserDocument")
+    order = relationship("Order")
+    payment = relationship("Payment")

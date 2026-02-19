@@ -6,6 +6,7 @@ from num2words import num2words
 
 
 from modules.connection_to_db.database import get_session
+from modules.models.payment import ContractPayment
 from modules.models.user import User
 from modules.models.user_document import UserDocument
 from modules.models.types import DocumentStatusEnum
@@ -26,6 +27,7 @@ from modules.utils.document_security import (
     render_contract_docx,
     serialize_document_for_response,
 )
+from modules.utils.payment_schedule import rebuild_schedule_for_document
 
 
 _PERSONAL_FIELDS = {
@@ -188,11 +190,45 @@ class AdminHandler:
             for field in _ADMIN_DOCUMENT_FIELDS:
                 setattr(doc, field, None)
 
+        self.db.query(ContractPayment).filter(ContractPayment.user_id == user_id).delete()
+        self.db.query(UserDocument).filter(UserDocument.user_id == user_id).update({"signed": False})
+
         self.db.commit()
         self.db.refresh(user)
         if doc:
             self.db.refresh(doc)
         return UserDocumentRead(**serialize_document_for_response(doc, self.cipher, user))
+
+
+    def sign_user_document(self, user_id: int, document_id: int) -> UserDocumentRead:
+        user = self._get_user_or_404(user_id)
+        self._ensure_user_approved(user)
+
+        docs = UserDocument.refresh_user_documents_status(self.db, user_id)
+        target_doc = next((doc for doc in docs if doc.id == document_id), None)
+        if not target_doc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Документ не найден",
+            )
+
+        for doc in docs:
+            doc.signed = doc.id == document_id
+
+        rebuild_schedule_for_document(self.db, target_doc)
+
+        self.db.commit()
+        self.db.refresh(target_doc)
+        return UserDocumentRead(**serialize_document_for_response(target_doc, self.cipher, user))
+
+    def get_user_payment_schedule(self, user_id: int) -> list[ContractPayment]:
+        self._get_user_or_404(user_id)
+        return (
+            self.db.query(ContractPayment)
+            .filter(ContractPayment.user_id == user_id)
+            .order_by(ContractPayment.payment_number.asc())
+            .all()
+        )
 
     def get_contract_docx_path(self, user_id: int, document_id: int) -> str:
         user = self._get_user_or_404(user_id)
