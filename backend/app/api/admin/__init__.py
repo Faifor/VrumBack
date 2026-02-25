@@ -11,6 +11,7 @@ from .update_document import router as update_document_router
 from .ping import router as ping_router
 from .sign_document import router as sign_document_router
 from .user_payment_schedule import router as user_payment_schedule_router
+from .inventory import router as inventory_router
 
 admin_router = APIRouter(tags=["Admin"])
 
@@ -25,3 +26,4 @@ admin_router.include_router(list_user_contracts_router)
 admin_router.include_router(ping_router)
 admin_router.include_router(sign_document_router)
 admin_router.include_router(user_payment_schedule_router)
+admin_router.include_router(inventory_router)
