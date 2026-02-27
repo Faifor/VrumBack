@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     PASSWORD_RESET_LOCKOUT_SECONDS: int = Field(default=20)
     SECURE_STORAGE_DIR: Path = BASE_DIR / "secure_storage"
     CONTRACT_TEMPLATE_FILENAME: str = "contract_template.docx"
+    RETURN_ACT_TEMPLATE_FILENAME: str = "return_act_template.docx"
     YOOKASSA_SHOP_ID: str | None = Field(default=None)
     YOOKASSA_SECRET_KEY: str | None = Field(default=None)
     YOOKASSA_API_URL: str = Field(default="https://api.yookassa.ru/v3")
@@ -37,6 +38,8 @@ class Settings(BaseSettings):
         env_file = BASE_DIR / ".env"
         env_file_encoding = "utf-8"
         # extra = "ignore"
+
+
 
 
 settings = Settings()

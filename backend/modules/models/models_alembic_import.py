@@ -4,3 +4,5 @@ from .password_reset_request import PasswordResetRequest
 from .payment import ContractPayment, Order, Payment
 
 from .inventory import Bike, Battery, Location
+
+from .return_act import ReturnAct

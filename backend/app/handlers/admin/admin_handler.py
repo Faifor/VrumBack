@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from fastapi import Depends, HTTPException, status
@@ -9,6 +10,7 @@ from num2words import num2words
 from modules.connection_to_db.database import get_session
 from modules.models.inventory import Battery, Bike
 from modules.models.payment import ContractPayment
+from modules.models.return_act import ReturnAct
 from modules.models.user import User
 from modules.models.user_document import UserDocument
 from modules.models.types import DocumentStatusEnum
@@ -20,6 +22,7 @@ from modules.schemas.document_schemas import (
     UserDocumentRead,
     UserWithDocumentSummary,
 )
+from modules.schemas.return_act_schemas import ReturnActCreateRequest, ReturnActRead
 from modules.utils.admin_utils import get_current_admin
 from modules.utils.document_security import (
     decrypt_document_fields,
@@ -27,6 +30,7 @@ from modules.utils.document_security import (
     encrypt_document_fields,
     get_sensitive_data_cipher,
     render_contract_docx,
+    render_return_act_docx,
     serialize_document_for_response,
 )
 from modules.utils.payment_schedule import rebuild_schedule_for_document
@@ -304,6 +308,184 @@ class AdminHandler:
         normalized = str(value).strip()
         return normalized or None
 
+    def create_return_act(
+        self, user_id: int, document_id: int, body: ReturnActCreateRequest
+    ) -> ReturnActRead:
+        user = self._get_user_or_404(user_id)
+        self._ensure_user_approved(user)
+
+        doc = self._get_user_document_or_404(user_id, document_id)
+        if not doc.signed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Акт возврата можно создать только для подписанного договора",
+            )
+
+        decrypted_doc = decrypt_document_fields(doc, self.cipher)
+        contract_number = decrypted_doc.get("contract_number")
+        rent_end_date = decrypted_doc.get("end_date")
+        bike_serial = self._normalize_asset_number(decrypted_doc.get("bike_serial"))
+        akb1_serial = self._normalize_asset_number(decrypted_doc.get("akb1_serial"))
+        akb2_serial = self._normalize_asset_number(decrypted_doc.get("akb2_serial"))
+
+        if not contract_number or not rent_end_date or not bike_serial:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="В договоре недостаточно данных для формирования акта возврата",
+            )
+
+        existing_act = (
+            self.db.query(ReturnAct)
+            .filter(ReturnAct.user_id == user_id, ReturnAct.document_id == document_id)
+            .first()
+        )
+        if existing_act:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Акт возврата для данного договора уже создан",
+            )
+
+        filled_date = date.today()
+        debt_due_date = filled_date + timedelta(days=body.debt_term_days)
+
+        act = ReturnAct(
+            user_id=user_id,
+            document_id=document_id,
+            return_act_number="",
+            contract_number=str(contract_number),
+            rent_end_date=rent_end_date,
+            filled_date=filled_date,
+            bike_serial=bike_serial,
+            akb1_serial=akb1_serial,
+            akb2_serial=akb2_serial,
+            is_fix_bike=body.is_fix_bike,
+            is_fix_akb_1=body.is_fix_AKB_1,
+            is_fix_akb_2=body.is_fix_AKB_2,
+            damage_description=body.damage_description,
+            damage_amount=body.damage_amount,
+            debt_term_days=body.debt_term_days,
+            debt_due_date=debt_due_date,
+        )
+        self.db.add(act)
+        self.db.flush()
+
+        act.return_act_number = f"{contract_number}-{act.id}"
+
+        if body.damage_amount > 0:
+            payment_number = (
+                self.db.query(ContractPayment)
+                .filter(ContractPayment.user_id == user_id)
+                .count()
+                + 1
+            )
+            damage_schedule = ContractPayment(
+                user_id=user_id,
+                document_id=document_id,
+                payment_number=payment_number,
+                due_date=debt_due_date,
+                amount=Decimal(body.damage_amount),
+                description=(
+                    f"Оплата повреждений по акту возврата {act.return_act_number}. "
+                    f"Срок оплаты до {debt_due_date.isoformat()}"
+                ),
+                payment_type="damage",
+                status="pending",
+            )
+            self.db.add(damage_schedule)
+            self.db.flush()
+            act.damage_schedule_payment_id = damage_schedule.id
+
+        self._update_inventory_after_return_act(act)
+
+        self.db.commit()
+        self.db.refresh(act)
+        return ReturnActRead(
+            id=act.id,
+            return_act_number=act.return_act_number,
+            contract_number=act.contract_number,
+            rent_end_date=act.rent_end_date,
+            filled_date=act.filled_date,
+            bike_serial=act.bike_serial,
+            akb1_serial=act.akb1_serial,
+            akb2_serial=act.akb2_serial,
+            is_fix_bike=act.is_fix_bike,
+            is_fix_AKB_1=act.is_fix_akb_1,
+            is_fix_AKB_2=act.is_fix_akb_2,
+            damage_description=act.damage_description,
+            damage_amount=act.damage_amount,
+            debt_term_days=act.debt_term_days,
+            debt_due_date=act.debt_due_date,
+            damage_schedule_payment_id=act.damage_schedule_payment_id,
+        )
+
+    def list_user_return_acts(self, user_id: int) -> list[ReturnActRead]:
+        self._get_user_or_404(user_id)
+        acts = (
+            self.db.query(ReturnAct)
+            .filter(ReturnAct.user_id == user_id)
+            .order_by(ReturnAct.created_at.desc())
+            .all()
+        )
+        return [self._serialize_return_act(act) for act in acts]
+
+    def get_user_return_act(self, user_id: int, act_id: int) -> ReturnActRead:
+        self._get_user_or_404(user_id)
+        act = self._get_return_act_or_404(user_id, act_id)
+        return self._serialize_return_act(act)
+
+    def _get_return_act_or_404(self, user_id: int, act_id: int) -> ReturnAct:
+        act = (
+            self.db.query(ReturnAct)
+            .filter(ReturnAct.id == act_id, ReturnAct.user_id == user_id)
+            .first()
+        )
+        if not act:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Акт возврата не найден",
+            )
+        return act
+
+    def _serialize_return_act(self, act: ReturnAct) -> ReturnActRead:
+        return ReturnActRead(
+            id=act.id,
+            return_act_number=act.return_act_number,
+            contract_number=act.contract_number,
+            rent_end_date=act.rent_end_date,
+            filled_date=act.filled_date,
+            bike_serial=act.bike_serial,
+            akb1_serial=act.akb1_serial,
+            akb2_serial=act.akb2_serial,
+            is_fix_bike=act.is_fix_bike,
+            is_fix_AKB_1=act.is_fix_akb_1,
+            is_fix_AKB_2=act.is_fix_akb_2,
+            damage_description=act.damage_description,
+            damage_amount=act.damage_amount,
+            debt_term_days=act.debt_term_days,
+            debt_due_date=act.debt_due_date,
+            damage_schedule_payment_id=act.damage_schedule_payment_id,
+        )
+
+    def _update_inventory_after_return_act(self, act: ReturnAct) -> None:
+        bike_status = "free" if act.is_fix_bike else "repair"
+        bike = (
+            self.db.query(Bike)
+            .filter(or_(Bike.number == act.bike_serial, Bike.vin == act.bike_serial))
+            .first()
+        )
+        if bike:
+            bike.status = bike_status
+
+        if act.akb1_serial:
+            akb1 = self.db.query(Battery).filter(Battery.number == act.akb1_serial).first()
+            if akb1:
+                akb1.status = "free" if act.is_fix_akb_1 else "repair"
+
+        if act.akb2_serial:
+            akb2 = self.db.query(Battery).filter(Battery.number == act.akb2_serial).first()
+            if akb2:
+                akb2.status = "free" if act.is_fix_akb_2 else "repair"
+
     def get_user_payment_schedule(self, user_id: int) -> list[ContractPayment]:
         self._get_user_or_404(user_id)
         return (
@@ -328,6 +510,27 @@ class AdminHandler:
             **decrypt_document_fields(doc, self.cipher),
         }
         return render_contract_docx(user, doc, decrypted_fields)
+
+    def get_return_act_docx_path(self, user_id: int, act_id: int) -> str:
+        self._get_user_or_404(user_id)
+        act = self._get_return_act_or_404(user_id, act_id)
+
+        values = {
+            "№_Акта_возврата": act.return_act_number,
+            "Дат_конец_аренды": act.rent_end_date.strftime("%d.%m.%Y"),
+            "№_договора": act.contract_number,
+            "Дата_заполнения": act.filled_date.strftime("%d.%m.%Y"),
+            "Серийный_номер_велик": act.bike_serial,
+            "Серийный_нормер_АКБ_1": act.akb1_serial or "",
+            "Серийный_нормер_АКБ_2": act.akb2_serial or "",
+            "is_fix_bike": str(act.is_fix_bike),
+            "is_fix_AKB_1": str(act.is_fix_akb_1),
+            "is_fix_AKB_2": str(act.is_fix_akb_2),
+            "Описание_повреждений": act.damage_description or "",
+            "Сумма_повреждений": act.damage_amount,
+            "Срок_долга": act.debt_term_days,
+        }
+        return render_return_act_docx(values, user_id=user_id, act_id=act.id)
 
     def _get_user_or_404(self, user_id: int) -> User:
         user = self.db.query(User).filter(User.id == user_id).first()
