@@ -1,11 +1,13 @@
 from decimal import Decimal, InvalidOperation
 
 from fastapi import Depends, HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from num2words import num2words
 
 
 from modules.connection_to_db.database import get_session
+from modules.models.inventory import Battery, Bike
 from modules.models.payment import ContractPayment
 from modules.models.user import User
 from modules.models.user_document import UserDocument
@@ -216,10 +218,91 @@ class AdminHandler:
             doc.signed = doc.id == document_id
 
         rebuild_schedule_for_document(self.db, target_doc)
+        self.db.flush()
+        self._sync_inventory_statuses_for_user_documents(docs)
 
         self.db.commit()
         self.db.refresh(target_doc)
         return UserDocumentRead(**serialize_document_for_response(target_doc, self.cipher, user))
+
+    def _sync_inventory_statuses_for_user_documents(
+        self, docs: list[UserDocument]
+    ) -> None:
+        candidate_bike_numbers: set[str] = set()
+        candidate_battery_numbers: set[str] = set()
+
+        for doc in docs:
+            decrypted_doc = decrypt_document_fields(doc, self.cipher)
+            bike_number = self._normalize_asset_number(decrypted_doc.get("bike_serial"))
+            if bike_number:
+                candidate_bike_numbers.add(bike_number)
+
+            for field in ("akb1_serial", "akb2_serial", "akb3_serial"):
+                battery_number = self._normalize_asset_number(decrypted_doc.get(field))
+                if battery_number:
+                    candidate_battery_numbers.add(battery_number)
+
+        if not candidate_bike_numbers and not candidate_battery_numbers:
+            return
+
+        signed_active_docs = (
+            self.db.query(UserDocument)
+            .filter(UserDocument.signed.is_(True))
+            .all()
+        )
+
+        rented_bike_numbers: set[str] = set()
+        rented_battery_numbers: set[str] = set()
+
+        for doc in signed_active_docs:
+            decrypted_doc = decrypt_document_fields(doc, self.cipher)
+            bike_number = self._normalize_asset_number(decrypted_doc.get("bike_serial"))
+            if bike_number:
+                rented_bike_numbers.add(bike_number)
+
+            for field in ("akb1_serial", "akb2_serial", "akb3_serial"):
+                battery_number = self._normalize_asset_number(decrypted_doc.get(field))
+                if battery_number:
+                    rented_battery_numbers.add(battery_number)
+
+        if candidate_bike_numbers:
+            bikes = (
+                self.db.query(Bike)
+                .filter(
+                    or_(
+                        Bike.number.in_(candidate_bike_numbers),
+                        Bike.vin.in_(candidate_bike_numbers),
+                    )
+                )
+                .all()
+            )
+            for bike in bikes:
+                bike_number = self._normalize_asset_number(bike.number)
+                bike_vin = self._normalize_asset_number(bike.vin)
+                bike.status = (
+                    "rented"
+                    if bike_number in rented_bike_numbers or bike_vin in rented_bike_numbers
+                    else "free"
+                )
+
+        if candidate_battery_numbers:
+            batteries = (
+                self.db.query(Battery)
+                .filter(Battery.number.in_(candidate_battery_numbers))
+                .all()
+            )
+            for battery in batteries:
+                battery_number = self._normalize_asset_number(battery.number)
+                battery.status = (
+                    "rented" if battery_number in rented_battery_numbers else "free"
+                )
+
+    @staticmethod
+    def _normalize_asset_number(value: object) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
 
     def get_user_payment_schedule(self, user_id: int) -> list[ContractPayment]:
         self._get_user_or_404(user_id)
