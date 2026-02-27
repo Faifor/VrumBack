@@ -43,6 +43,7 @@ _DOCUMENT_FIELDS = _ENCRYPTED_DOCUMENT_FIELDS | _DATE_FIELDS
 
 _SECURE_TEMPLATE_SUBDIR = "templates"
 _SECURE_CONTRACTS_SUBDIR = "generated_contracts"
+_SECURE_RETURN_ACTS_SUBDIR = "generated_return_acts"
 _ENCRYPTED_PREFIX = "enc:"
 _CONTRACT_CITY = "Великий Новгород"
 
@@ -71,6 +72,19 @@ def get_generated_contracts_dir() -> Path:
 def get_generated_contract_path(user_id: int) -> Path:
     return get_generated_contracts_dir() / f"contract_user_{user_id}.docx"
 
+def get_return_act_template_path() -> Path:
+    template_dir = _ensure_secure_dir(
+        settings.SECURE_STORAGE_DIR / _SECURE_TEMPLATE_SUBDIR
+    )
+    return template_dir / settings.RETURN_ACT_TEMPLATE_FILENAME
+
+
+def get_generated_return_acts_dir() -> Path:
+    return _ensure_secure_dir(settings.SECURE_STORAGE_DIR / _SECURE_RETURN_ACTS_SUBDIR)
+
+
+def get_generated_return_act_path(user_id: int, act_id: int) -> Path:
+    return get_generated_return_acts_dir() / f"return_act_user_{user_id}_{act_id}.docx"
 
 class SensitiveDataCipher:
     def __init__(self, key: str):
@@ -358,3 +372,19 @@ def _format_date_human(value: Any) -> str:
     if isinstance(value, date):
         return value.strftime("%d.%m.%Y")
     return str(value)
+
+def render_return_act_docx(values: Mapping[str, Any], user_id: int, act_id: int) -> str:
+    template_path = get_return_act_template_path()
+    if not template_path.exists():
+        raise FileNotFoundError(
+            f"DOCX-шаблон акта возврата не найден по пути: {template_path}. "
+            "Поместите шаблон в SECURE_STORAGE_DIR/templates "
+            "и обновите RETURN_ACT_TEMPLATE_FILENAME при необходимости."
+        )
+
+    document = DocxDocument(template_path)
+    _replace_placeholders_in_docx(document, values)
+
+    out_path = get_generated_return_act_path(user_id, act_id)
+    document.save(out_path)
+    return str(out_path)

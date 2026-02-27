@@ -70,6 +70,8 @@ class ContractPayment(Base):
     payment_number = Column(Integer, nullable=False)
     due_date = Column(Date, nullable=False)
     amount = Column(Numeric(10, 2), nullable=False)
+    description = Column(String(255), nullable=True)
+    payment_type = Column(String(32), nullable=False, default="rent", server_default="rent", index=True)
     status = Column(String(32), nullable=False, default="pending", server_default="pending", index=True)
     order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
     payment_id = Column(Integer, ForeignKey("payments.id", ondelete="SET NULL"), nullable=True)

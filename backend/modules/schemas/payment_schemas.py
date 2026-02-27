@@ -78,6 +78,8 @@ class ContractPaymentRead(BaseModel):
     payment_number: int
     due_date: date
     amount: Decimal
+    description: str | None
+    payment_type: str
     status: str
     order_id: int | None
     payment_id: int | None

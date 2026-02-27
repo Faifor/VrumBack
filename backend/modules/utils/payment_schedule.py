@@ -29,6 +29,8 @@ def rebuild_schedule_for_document(db: Session, document: UserDocument) -> list[C
             payment_number=idx + 1,
             due_date=filled_date + timedelta(days=7 * idx),
             amount=Decimal(amount),
+            description=f"Платеж по договору #{idx + 1}",
+            payment_type="rent",
             status="pending",
         )
         db.add(row)

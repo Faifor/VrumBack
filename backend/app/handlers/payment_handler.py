@@ -31,12 +31,16 @@ class PaymentHandler:
         if amount is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount is required")
 
-        order = self._get_or_create_order(current_user, data.order_id, amount, data.currency, data.description)
+        payment_description = data.description or (schedule_item.description if schedule_item else None)
+        order = self._get_or_create_order(current_user, data.order_id, amount, data.currency, payment_description)
+        payment_description = payment_description or f"Order #{order.id}"
+        if order.description != payment_description:
+            order.description = payment_description
         receipt = self._build_receipt(
             user=current_user,
             amount=amount,
             currency=data.currency,
-            description=data.description or f"Order #{order.id}",
+            description=payment_description,
         )
 
         payload = {
@@ -46,7 +50,7 @@ class PaymentHandler:
                 "type": "redirect",
                 "return_url": data.return_url or settings.YOOKASSA_RETURN_URL or "https://example.com/return",
             },
-            "description": data.description or f"Order #{order.id}",
+            "description": payment_description,
             "save_payment_method": data.save_payment_method,
             "metadata": {"order_id": str(order.id), "user_id": str(current_user.id)},
             "receipt": receipt,
@@ -155,18 +159,22 @@ class PaymentHandler:
         if amount is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount is required")
 
-        order = self._get_or_create_order(current_user, data.order_id, amount, data.currency, data.description)
+        autopay_description = data.description or (schedule_item.description if schedule_item else None)
+        order = self._get_or_create_order(current_user, data.order_id, amount, data.currency, autopay_description)
+        autopay_description = autopay_description or f"Autopay order #{order.id}"
+        if order.description != autopay_description:
+            order.description = autopay_description
         receipt = self._build_receipt(
             user=current_user,
             amount=amount,
             currency=data.currency,
-            description=data.description or f"Autopay order #{order.id}",
+            description=autopay_description,
         )
         payload = {
             "amount": {"value": f"{amount:.2f}", "currency": data.currency.upper()},
             "capture": True,
             "payment_method_id": current_user.autopay_payment_method_id,
-            "description": data.description or f"Autopay order #{order.id}",
+            "description": autopay_description,
             "metadata": {"order_id": str(order.id), "user_id": str(current_user.id), "autopay": "1"},
             "receipt": receipt,
         }
