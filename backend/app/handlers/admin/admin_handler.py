@@ -405,26 +405,40 @@ class AdminHandler:
         weekly_amount_recalc = resolve_weekly_amount(self.db, bike_serial, used_weeks)
         recalculated_total = calc_total_amount(weekly_amount_recalc, used_weeks)
 
-        paid_amount = (
+        pending_future_rent_rows = (
+            self.db.query(ContractPayment)
+            .filter(
+                ContractPayment.user_id == user_id,
+                ContractPayment.document_id == document_id,
+                ContractPayment.payment_type == "rent",
+                ContractPayment.status == "pending",
+                ContractPayment.due_date > filled_date,
+            )
+            .all()
+        )
+        for payment_row in pending_future_rent_rows:
+            self.db.delete(payment_row)
+
+        accrued_rent_amount = (
             self.db.query(func.coalesce(func.sum(ContractPayment.amount), 0))
             .filter(
                 ContractPayment.user_id == user_id,
                 ContractPayment.document_id == document_id,
                 ContractPayment.payment_type == "rent",
-                ContractPayment.status == "paid",
+                ContractPayment.due_date <= filled_date,
             )
             .scalar()
         )
-        paid_amount_decimal = Decimal(paid_amount)
+        accrued_rent_amount_decimal = Decimal(accrued_rent_amount)
 
-        if recalculated_total > paid_amount_decimal:
+        if recalculated_total > accrued_rent_amount_decimal:
             payment_number = (
                 self.db.query(ContractPayment)
                 .filter(ContractPayment.user_id == user_id)
                 .count()
                 + 1
             )
-            debt_diff = recalculated_total - paid_amount_decimal
+            debt_diff = recalculated_total - accrued_rent_amount_decimal
             recalc_schedule = ContractPayment(
                 user_id=user_id,
                 document_id=document_id,
