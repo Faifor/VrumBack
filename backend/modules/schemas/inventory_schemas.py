@@ -47,6 +47,7 @@ class BikeBase(BaseModel):
     purchase_date: date | None = None
     last_service_date: date | None = None
     next_service_date: date | None = None
+    type_id: int | None = None
     location_id: int | None = None
 
 
@@ -63,6 +64,7 @@ class BikeUpdate(BaseModel):
     purchase_date: date | None = None
     last_service_date: date | None = None
     next_service_date: date | None = None
+    type_id: int | None = None
     location_id: int | None = Field(default=None)
 
 
@@ -104,5 +106,31 @@ class BatteryRead(BatteryBase):
     id: int
     location: LocationRead | None = None
     active_contract: ActiveContractInfo | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BikePricingBase(BaseModel):
+    type_id: int
+    name_type: str
+    min_weeks_count: int = Field(ge=1)
+    max_weeks_count: int = Field(ge=1)
+    amount_weeks: int = Field(ge=0)
+
+
+class BikePricingCreate(BikePricingBase):
+    pass
+
+
+class BikePricingUpdate(BaseModel):
+    type_id: int | None = None
+    name_type: str | None = None
+    min_weeks_count: int | None = Field(default=None, ge=1)
+    max_weeks_count: int | None = Field(default=None, ge=1)
+    amount_weeks: int | None = Field(default=None, ge=0)
+
+
+class BikePricingRead(BikePricingBase):
+    id: int
 
     model_config = ConfigDict(from_attributes=True)

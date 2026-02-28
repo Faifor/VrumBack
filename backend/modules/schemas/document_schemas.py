@@ -115,15 +115,15 @@ class UserDocumentAdminUpdate(BaseModel):
         return _validate_digits_only(value, "amount")
 
 
-class UserDocumentAdminUpdateInput(UserDocumentAdminUpdate):
-    @field_validator("contract_number", "amount_text", "end_date")
-    @classmethod
-    def forbid_manual(cls, value, info: FieldValidationInfo):
-        if value is not None:
-            raise ValueError(
-                f"{info.field_name} заполняется автоматически и не должен передаваться"
-            )
-        return value
+class UserDocumentAdminUpdateInput(BaseModel):
+    bike_serial: str | None = None
+    akb1_serial: str | None = None
+    akb2_serial: str | None = None
+    akb3_serial: str | None = None
+    weeks_count: int | None = None
+    filled_date: date | None = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class UserDocumentBase(UserDocumentUserUpdate, UserDocumentAdminUpdate):

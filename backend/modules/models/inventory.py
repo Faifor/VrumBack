@@ -27,6 +27,7 @@ class Bike(Base):
     purchase_date = Column(Date, nullable=True)
     last_service_date = Column(Date, nullable=True)
     next_service_date = Column(Date, nullable=True)
+    type_id = Column(Integer, nullable=True, index=True)
     location_id = Column(Integer, ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
 
     location = relationship("Location", back_populates="bikes")
@@ -46,3 +47,14 @@ class Battery(Base):
     location_id = Column(Integer, ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
 
     location = relationship("Location", back_populates="batteries")
+
+
+class BikePricing(Base):
+    __tablename__ = "bike_pricing"
+
+    id = Column(Integer, primary_key=True, index=True)
+    type_id = Column(Integer, nullable=False, index=True)
+    name_type = Column(String, nullable=False)
+    min_weeks_count = Column(Integer, nullable=False)
+    max_weeks_count = Column(Integer, nullable=False)
+    amount_weeks = Column(Integer, nullable=False)
