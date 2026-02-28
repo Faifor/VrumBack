@@ -5,8 +5,8 @@ from pydantic import BaseModel, Field
 
 class ReturnActCreateRequest(BaseModel):
     is_fix_bike: bool
-    is_fix_AKB_1: bool
-    is_fix_AKB_2: bool
+    is_fix_AKB_1: bool | None = None
+    is_fix_AKB_2: bool | None = None
     damage_description: str | None = None
     damage_amount: int = Field(ge=0)
     debt_term_days: int = Field(ge=0)

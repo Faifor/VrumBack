@@ -52,7 +52,6 @@ _ADMIN_DOCUMENT_FIELDS = {
     "bike_serial",
     "akb1_serial",
     "akb2_serial",
-    "akb3_serial",
     "amount",
     "amount_text",
 }
@@ -126,11 +125,19 @@ class AdminHandler:
         elif not doc.active and has_updates:
             doc = self._create_document(user_id, user)
 
+        if doc.signed and has_updates:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Подписанный договор нельзя редактировать",
+            )
+
         if not has_updates:
             return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
 
         update_payload.pop("amount", None)
         update_payload.pop("amount_text", None)
+
+        self._ensure_inventory_is_free_for_contract(update_payload)
 
         encrypted_data = encrypt_document_fields(
             update_payload,
@@ -221,8 +228,7 @@ class AdminHandler:
                 detail="Документ не найден",
             )
 
-        for doc in docs:
-            doc.signed = doc.id == document_id
+        target_doc.signed = True
 
         self._recalculate_contract_amount(target_doc, require_data=True)
 
@@ -246,7 +252,7 @@ class AdminHandler:
             if bike_number:
                 candidate_bike_numbers.add(bike_number)
 
-            for field in ("akb1_serial", "akb2_serial", "akb3_serial"):
+            for field in ("akb1_serial", "akb2_serial"):
                 battery_number = self._normalize_asset_number(decrypted_doc.get(field))
                 if battery_number:
                     candidate_battery_numbers.add(battery_number)
@@ -256,7 +262,7 @@ class AdminHandler:
 
         signed_active_docs = (
             self.db.query(UserDocument)
-            .filter(UserDocument.signed.is_(True))
+            .filter(UserDocument.signed.is_(True), UserDocument.active.is_(True))
             .all()
         )
 
@@ -269,7 +275,7 @@ class AdminHandler:
             if bike_number:
                 rented_bike_numbers.add(bike_number)
 
-            for field in ("akb1_serial", "akb2_serial", "akb3_serial"):
+            for field in ("akb1_serial", "akb2_serial"):
                 battery_number = self._normalize_asset_number(decrypted_doc.get(field))
                 if battery_number:
                     rented_battery_numbers.add(battery_number)
@@ -364,8 +370,8 @@ class AdminHandler:
             akb1_serial=akb1_serial,
             akb2_serial=akb2_serial,
             is_fix_bike=body.is_fix_bike,
-            is_fix_akb_1=body.is_fix_AKB_1,
-            is_fix_akb_2=body.is_fix_AKB_2,
+            is_fix_akb_1=(body.is_fix_AKB_1 if body.is_fix_AKB_1 is not None else True),
+            is_fix_akb_2=(body.is_fix_AKB_2 if body.is_fix_AKB_2 is not None else True),
             damage_description=body.damage_description,
             damage_amount=body.damage_amount,
             debt_term_days=body.debt_term_days,
@@ -453,6 +459,11 @@ class AdminHandler:
                 status="pending",
             )
             self.db.add(recalc_schedule)
+
+        doc.active = False
+        doc.signed = True
+        if doc.filled_date and doc.end_date and doc.end_date >= filled_date:
+            doc.end_date = filled_date - timedelta(days=1)
 
         self._update_inventory_after_return_act(act)
 
@@ -545,6 +556,10 @@ class AdminHandler:
             if akb2:
                 akb2.status = "free" if act.is_fix_akb_2 else "repair"
 
+    @staticmethod
+    def _fix_state_label(value: bool | None) -> str:
+        return "Исправен" if value else "Не исправен"
+
     def get_user_payment_schedule(self, user_id: int) -> list[ContractPayment]:
         self._get_user_or_404(user_id)
         return (
@@ -574,6 +589,10 @@ class AdminHandler:
         self._get_user_or_404(user_id)
         act = self._get_return_act_or_404(user_id, act_id)
 
+        user = self._get_user_or_404(user_id)
+        personal_data = decrypt_user_fields(user, self.cipher)
+        last_name, first_name, patronymic = self._split_full_name(personal_data.get("full_name"))
+
         values = {
             "№_Акта_возврата": act.return_act_number,
             "Дат_конец_аренды": act.rent_end_date.strftime("%d.%m.%Y"),
@@ -582,14 +601,64 @@ class AdminHandler:
             "Серийный_номер_велик": act.bike_serial,
             "Серийный_нормер_АКБ_1": act.akb1_serial or "",
             "Серийный_нормер_АКБ_2": act.akb2_serial or "",
-            "is_fix_bike": str(act.is_fix_bike),
-            "is_fix_AKB_1": str(act.is_fix_akb_1),
-            "is_fix_AKB_2": str(act.is_fix_akb_2),
+            "last_name": last_name,
+            "first_name": first_name,
+            "patronymic": patronymic,
+            "is_fix_bike": self._fix_state_label(act.is_fix_bike),
+            "is_fix_AKB_1": self._fix_state_label(act.is_fix_akb_1),
+            "is_fix_AKB_2": self._fix_state_label(act.is_fix_akb_2),
             "Описание_повреждений": act.damage_description or "",
             "Сумма_повреждений": act.damage_amount,
             "Срок_долга": act.debt_term_days,
         }
         return render_return_act_docx(values, user_id=user_id, act_id=act.id)
+
+    def _ensure_inventory_is_free_for_contract(
+        self, update_payload: dict[str, object]
+    ) -> None:
+        bike_serial = self._normalize_asset_number(update_payload.get("bike_serial"))
+        if bike_serial:
+            bike = (
+                self.db.query(Bike)
+                .filter(or_(Bike.number == bike_serial, Bike.vin == bike_serial))
+                .first()
+            )
+            if not bike:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Велосипед не найден",
+                )
+            if bike.status != "free":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="В договор можно добавить только велосипед со статусом free",
+                )
+
+        for field in ("akb1_serial", "akb2_serial"):
+            serial = self._normalize_asset_number(update_payload.get(field))
+            if not serial:
+                continue
+            battery = self.db.query(Battery).filter(Battery.number == serial).first()
+            if not battery:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"АКБ {serial} не найден",
+                )
+            if battery.status != "free":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="В договор можно добавить только АКБ со статусом free",
+                )
+
+    @staticmethod
+    def _split_full_name(full_name: str | None) -> tuple[str, str, str]:
+        if not full_name:
+            return "", "", ""
+        parts = [p for p in str(full_name).split() if p]
+        last_name = parts[0] if len(parts) > 0 else ""
+        first_name = parts[1] if len(parts) > 1 else ""
+        patronymic = " ".join(parts[2:]) if len(parts) > 2 else ""
+        return last_name, first_name, patronymic
 
     def _get_user_or_404(self, user_id: int) -> User:
         user = self.db.query(User).filter(User.id == user_id).first()

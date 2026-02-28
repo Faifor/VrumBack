@@ -5,7 +5,7 @@ from modules.connection_to_db.database import get_session
 from modules.models.user import User
 from modules.models.user_document import UserDocument
 from modules.models.types import DocumentStatusEnum
-from modules.schemas.document_schemas import UserDocumentUserUpdate
+from modules.schemas.document_schemas import UserDocumentUserUpdate, build_full_name
 from modules.utils.document_security import (
     decrypt_document_fields,
     decrypt_user_fields,
@@ -74,12 +74,19 @@ class UserDocumentHandler:
                 detail="Данные одобрены и не могут быть изменены",
             )
         encrypted_data = encrypt_document_fields(
-            data.model_dump(exclude_unset=True),
-            self.cipher,
-            allowed_fields=_PERSONAL_FIELDS,
-        )
-        encrypted_data = encrypt_document_fields(
-            data.model_dump(exclude_unset=True),
+            {
+                "full_name": build_full_name(
+                    data.last_name,
+                    data.first_name,
+                    data.patronymic,
+                ),
+                "inn": data.inn,
+                "registration_address": data.registration_address,
+                "residential_address": data.residential_address,
+                "passport": data.passport,
+                "phone": data.phone,
+                "bank_account": data.bank_account,
+            },
             self.cipher,
             allowed_fields=_PERSONAL_FIELDS,
         )
