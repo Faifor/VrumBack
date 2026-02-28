@@ -35,7 +35,6 @@ _ENCRYPTED_DOCUMENT_FIELDS = {
     "bike_serial",
     "akb1_serial",
     "akb2_serial",
-    "akb3_serial",
     "amount",
     "amount_text",
 }
@@ -197,7 +196,6 @@ def serialize_document_for_response(
             "bike_serial": doc_data.get("bike_serial"),
             "akb1_serial": doc_data.get("akb1_serial"),
             "akb2_serial": doc_data.get("akb2_serial"),
-            "akb3_serial": doc_data.get("akb3_serial"),
             "amount": doc_data.get("amount"),
             "amount_text": doc_data.get("amount_text"),
             "weeks_count": doc.weeks_count,
@@ -214,7 +212,6 @@ def serialize_document_for_response(
             "bike_serial": None,
             "akb1_serial": None,
             "akb2_serial": None,
-            "akb3_serial": None,
             "amount": None,
             "amount_text": None,
             "weeks_count": None,
@@ -230,7 +227,12 @@ def serialize_document_for_response(
     status = getattr(user, "status", None)
     rejection_reason = getattr(user, "rejection_reason", None)
 
+    last_name, first_name, patronymic = _split_full_name(personal_data.get("full_name"))
+
     return {
+        "last_name": last_name,
+        "first_name": first_name,
+        "patronymic": patronymic,
         "full_name": personal_data.get("full_name"),
         "inn": personal_data.get("inn"),
         "registration_address": personal_data.get("registration_address"),
@@ -292,6 +294,14 @@ def _replace_placeholders_in_docx(doc: DocxDocument, values: dict[str, Any]) -> 
         for paragraph in footer.paragraphs:
             _replace_in_paragraph(paragraph, values)
 
+def _split_full_name(full_name: str | None) -> tuple[str, str, str]:
+    if not full_name:
+        return "", "", ""
+    parts = [p for p in str(full_name).split() if p]
+    last_name = parts[0] if len(parts) > 0 else ""
+    first_name = parts[1] if len(parts) > 1 else ""
+    patronymic = " ".join(parts[2:]) if len(parts) > 2 else ""
+    return last_name, first_name, patronymic
 
 def _week_word(n: int | None) -> str:
     if n is None:
@@ -329,10 +339,15 @@ def render_contract_docx(
     filled_date_str = _format_date_human(filled_date_value) or today_str
     end_date_str = _format_date_human(end_date_value)
 
+    last_name, first_name, patronymic = _split_full_name(decrypted_fields.get("full_name"))
+
     values: dict[str, Any] = {
         "CITY": _CONTRACT_CITY,
         "DATE": today_str,
         "FULL_NAME": decrypted_fields.get("full_name") or "",
+        "last_name": last_name,
+        "first_name": first_name,
+        "patronymic": patronymic,
         "ФИО": decrypted_fields.get("full_name") or "",
         "ADDRESS": decrypted_fields.get("registration_address")
         or decrypted_fields.get("residential_address")
@@ -349,7 +364,6 @@ def render_contract_docx(
         "Серийный_номер_велик": decrypted_fields.get("bike_serial") or "",
         "Серийный_нормер_АКБ_1": decrypted_fields.get("akb1_serial") or "",
         "Серийный_нормер_АКБ_2": decrypted_fields.get("akb2_serial") or "",
-        "Серийный_нормер_АКБ_3": decrypted_fields.get("akb3_serial") or "",
         "Сумма": decrypted_fields.get("amount") or "",
         "Сумма_пропись": decrypted_fields.get("amount_text") or "",
         "Кол_во_недель": str(doc.weeks_count) if doc.weeks_count is not None else "",

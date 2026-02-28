@@ -33,7 +33,9 @@ def _validate_digits_only(value: str | int | None, field_name: str) -> int | Non
 
 
 class UserDocumentUserUpdate(BaseModel):
-    full_name: str
+    last_name: str
+    first_name: str
+    patronymic: str
     inn: int = Field(
         ...,
         description="Только цифры",
@@ -90,7 +92,6 @@ class UserDocumentAdminUpdate(BaseModel):
     bike_serial: str | None = None
     akb1_serial: str | None = None
     akb2_serial: str | None = None
-    akb3_serial: str | None = None
     amount: int | None = Field(
         default=None,
         description="Только цифры",
@@ -119,7 +120,6 @@ class UserDocumentAdminUpdateInput(BaseModel):
     bike_serial: str | None = None
     akb1_serial: str | None = None
     akb2_serial: str | None = None
-    akb3_serial: str | None = None
     weeks_count: int | None = None
     filled_date: date | None = None
 
@@ -131,6 +131,9 @@ class UserDocumentBase(UserDocumentUserUpdate, UserDocumentAdminUpdate):
 
 
 class UserDocumentRead(UserDocumentBase):
+    last_name: str | None = None
+    first_name: str | None = None
+    patronymic: str | None = None
     full_name: str | None = None
     inn: int | None = None
     registration_address: str | None = None
@@ -171,3 +174,13 @@ class UserWithDocumentSummary(BaseModel):
     rejection_reason: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+def build_full_name(last_name: str, first_name: str, patronymic: str) -> str:
+    return " ".join(
+        [
+            str(last_name).strip(),
+            str(first_name).strip(),
+            str(patronymic).strip(),
+        ]
+    ).strip()
