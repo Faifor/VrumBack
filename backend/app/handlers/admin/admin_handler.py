@@ -2,7 +2,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from fastapi import Depends, HTTPException, status
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from num2words import num2words
 
@@ -34,6 +34,7 @@ from modules.utils.document_security import (
     serialize_document_for_response,
 )
 from modules.utils.payment_schedule import rebuild_schedule_for_document
+from modules.utils.pricing import calc_total_amount, resolve_weekly_amount
 
 
 _PERSONAL_FIELDS = {
@@ -128,12 +129,8 @@ class AdminHandler:
         if not has_updates:
             return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
 
-        if "amount" in update_payload:
-            generated_amount_text = self._generate_amount_text(
-                update_payload.get("amount")
-            )
-            if generated_amount_text:
-                update_payload["amount_text"] = generated_amount_text
+        update_payload.pop("amount", None)
+        update_payload.pop("amount_text", None)
 
         encrypted_data = encrypt_document_fields(
             update_payload,
@@ -149,6 +146,12 @@ class AdminHandler:
 
         if body.filled_date is not None or "filled_date" in body.model_fields_set:
             doc.filled_date = body.filled_date
+
+        needs_amount_refresh = bool(
+            {"bike_serial", "weeks_count", "filled_date", "amount"}
+            & body.model_fields_set
+        )
+        self._recalculate_contract_amount(doc, require_data=needs_amount_refresh)
 
         doc.refresh_dates_and_status(update_active=False)
         self._ensure_contract_number(doc)
@@ -220,6 +223,8 @@ class AdminHandler:
 
         for doc in docs:
             doc.signed = doc.id == document_id
+
+        self._recalculate_contract_amount(target_doc, require_data=True)
 
         rebuild_schedule_for_document(self.db, target_doc)
         self.db.flush()
@@ -394,6 +399,46 @@ class AdminHandler:
             self.db.add(damage_schedule)
             self.db.flush()
             act.damage_schedule_payment_id = damage_schedule.id
+
+        used_days = (filled_date - doc.filled_date).days if doc.filled_date else 0
+        used_weeks = max(1, (used_days + 6) // 7)
+        weekly_amount_recalc = resolve_weekly_amount(self.db, bike_serial, used_weeks)
+        recalculated_total = calc_total_amount(weekly_amount_recalc, used_weeks)
+
+        paid_amount = (
+            self.db.query(func.coalesce(func.sum(ContractPayment.amount), 0))
+            .filter(
+                ContractPayment.user_id == user_id,
+                ContractPayment.document_id == document_id,
+                ContractPayment.payment_type == "rent",
+                ContractPayment.status == "paid",
+            )
+            .scalar()
+        )
+        paid_amount_decimal = Decimal(paid_amount)
+
+        if recalculated_total > paid_amount_decimal:
+            payment_number = (
+                self.db.query(ContractPayment)
+                .filter(ContractPayment.user_id == user_id)
+                .count()
+                + 1
+            )
+            debt_diff = recalculated_total - paid_amount_decimal
+            recalc_schedule = ContractPayment(
+                user_id=user_id,
+                document_id=document_id,
+                payment_number=payment_number,
+                due_date=debt_due_date,
+                amount=debt_diff,
+                description=(
+                    f"Перерасчет аренды по акту возврата {act.return_act_number}: "
+                    f"фактический срок {used_weeks} нед."
+                ),
+                payment_type="recalculation",
+                status="pending",
+            )
+            self.db.add(recalc_schedule)
 
         self._update_inventory_after_return_act(act)
 
@@ -620,6 +665,33 @@ class AdminHandler:
             return None
 
         return num2words(numeric_value, lang="ru")
+
+    def _recalculate_contract_amount(
+        self, doc: UserDocument, require_data: bool = False
+    ) -> None:
+        decrypted_doc = decrypt_document_fields(doc, self.cipher)
+        bike_serial = self._normalize_asset_number(decrypted_doc.get("bike_serial"))
+
+        if not bike_serial or not doc.weeks_count:
+            if require_data:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Для автоподсчета amount требуются bike_serial и weeks_count",
+                )
+            return
+
+        weekly_amount = resolve_weekly_amount(self.db, bike_serial, doc.weeks_count)
+        total_amount = int(calc_total_amount(weekly_amount, doc.weeks_count))
+        encrypted_amount = encrypt_document_fields(
+            {
+                "amount": total_amount,
+                "amount_text": self._generate_amount_text(total_amount),
+            },
+            self.cipher,
+            allowed_fields={"amount", "amount_text"},
+        )
+        for field, value in encrypted_amount.items():
+            setattr(doc, field, value)
     
     def _ensure_user_approved(self, user: User) -> None:
         if user.status != DocumentStatusEnum.APPROVED:

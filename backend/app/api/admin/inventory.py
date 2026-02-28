@@ -4,6 +4,9 @@ from app.handlers.admin.inventory_handler import InventoryHandler
 from modules.schemas.inventory_schemas import (
     AssetStatus,
     BatteryCreate,
+    BikePricingCreate,
+    BikePricingRead,
+    BikePricingUpdate,
     BatteryRead,
     BatteryUpdate,
     BikeCreate,
@@ -111,3 +114,37 @@ def admin_update_battery(
     handler: InventoryHandler = Depends(InventoryHandler),
 ):
     return handler.update_battery(battery_id, body)
+
+
+@router.get("/admin/bike-pricing", response_model=list[BikePricingRead])
+def admin_list_bike_pricing(
+    type_id: int | None = Query(default=None),
+    handler: InventoryHandler = Depends(InventoryHandler),
+):
+    items = handler.list_bike_pricing(type_id=type_id)
+    return [BikePricingRead.model_validate(item) for item in items]
+
+
+@router.post("/admin/bike-pricing", response_model=BikePricingRead)
+def admin_create_bike_pricing(
+    body: BikePricingCreate,
+    handler: InventoryHandler = Depends(InventoryHandler),
+):
+    return handler.create_bike_pricing(body)
+
+
+@router.get("/admin/bike-pricing/{pricing_id}", response_model=BikePricingRead)
+def admin_get_bike_pricing(
+    pricing_id: int,
+    handler: InventoryHandler = Depends(InventoryHandler),
+):
+    return BikePricingRead.model_validate(handler.get_bike_pricing(pricing_id))
+
+
+@router.put("/admin/bike-pricing/{pricing_id}", response_model=BikePricingRead)
+def admin_update_bike_pricing(
+    pricing_id: int,
+    body: BikePricingUpdate,
+    handler: InventoryHandler = Depends(InventoryHandler),
+):
+    return handler.update_bike_pricing(pricing_id, body)

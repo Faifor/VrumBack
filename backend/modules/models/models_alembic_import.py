@@ -3,6 +3,6 @@ from .user_document import UserDocument
 from .password_reset_request import PasswordResetRequest
 from .payment import ContractPayment, Order, Payment
 
-from .inventory import Bike, Battery, Location
+from .inventory import Bike, Battery, BikePricing, Location
 
 from .return_act import ReturnAct

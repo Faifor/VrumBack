@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from modules.connection_to_db.database import get_session
-from modules.models.inventory import Battery, Bike, Location
+from modules.models.inventory import Battery, Bike, BikePricing, Location
 from modules.models.user_document import UserDocument
 from modules.models.user import User
 from modules.schemas.inventory_schemas import (
@@ -14,6 +14,9 @@ from modules.schemas.inventory_schemas import (
     BatteryRead,
     BatteryUpdate,
     BikeCreate,
+    BikePricingCreate,
+    BikePricingRead,
+    BikePricingUpdate,
     BikeRead,
     BikeUpdate,
     LocationCreate,
@@ -152,6 +155,52 @@ class InventoryHandler:
         _, battery_contracts = self._get_active_contract_maps()
         return self._to_battery_read(battery, battery_contracts.get(battery.number))
 
+    def list_bike_pricing(self, type_id: int | None = None) -> list[BikePricing]:
+        query = self.db.query(BikePricing)
+        if type_id is not None:
+            query = query.filter(BikePricing.type_id == type_id)
+        return query.order_by(
+            BikePricing.type_id.asc(),
+            BikePricing.min_weeks_count.asc(),
+            BikePricing.id.asc(),
+        ).all()
+
+    def get_bike_pricing(self, pricing_id: int) -> BikePricing:
+        pricing = self.db.query(BikePricing).filter(BikePricing.id == pricing_id).first()
+        if not pricing:
+            raise HTTPException(status_code=404, detail="Тариф ценообразования не найден")
+        return pricing
+
+    def create_bike_pricing(self, body: BikePricingCreate) -> BikePricingRead:
+        self._ensure_pricing_weeks_range(body.min_weeks_count, body.max_weeks_count)
+        pricing = BikePricing(**body.model_dump())
+        self.db.add(pricing)
+        self.db.commit()
+        self.db.refresh(pricing)
+        return BikePricingRead.model_validate(pricing)
+
+    def update_bike_pricing(self, pricing_id: int, body: BikePricingUpdate) -> BikePricingRead:
+        pricing = self.get_bike_pricing(pricing_id)
+        payload = body.model_dump(exclude_unset=True)
+
+        min_weeks = payload.get("min_weeks_count", pricing.min_weeks_count)
+        max_weeks = payload.get("max_weeks_count", pricing.max_weeks_count)
+        self._ensure_pricing_weeks_range(min_weeks, max_weeks)
+
+        for field, value in payload.items():
+            setattr(pricing, field, value)
+
+        self.db.commit()
+        self.db.refresh(pricing)
+        return BikePricingRead.model_validate(pricing)
+
+    def _ensure_pricing_weeks_range(self, min_weeks_count: int, max_weeks_count: int) -> None:
+        if min_weeks_count > max_weeks_count:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="min_weeks_count не может быть больше max_weeks_count",
+            )
+
     def _ensure_location_exists(self, location_id: int | None) -> None:
         if location_id is None:
             return
@@ -215,6 +264,7 @@ class InventoryHandler:
             purchase_date=bike.purchase_date,
             last_service_date=bike.last_service_date,
             next_service_date=bike.next_service_date,
+            type_id=bike.type_id,
             location_id=bike.location_id,
             location=LocationRead.model_validate(bike.location) if bike.location else None,
             active_contract=contract,
