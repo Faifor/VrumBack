@@ -6,6 +6,6 @@ from modules.schemas.document_schemas import UserContractItem
 router = APIRouter()
 
 
-@router.get("/users/me/documents", response_model=list[UserContractItem])
-def list_my_contracts(handler: UserDocumentHandler = Depends(UserDocumentHandler)):
-    return handler.list_my_contracts()
+@router.get("/users/me/documents/active", response_model=list[UserContractItem])
+def list_my_active_contracts(handler: UserDocumentHandler = Depends(UserDocumentHandler)):
+    return handler.list_my_active_contracts()

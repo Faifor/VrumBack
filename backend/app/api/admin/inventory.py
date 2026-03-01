@@ -4,6 +4,7 @@ from app.handlers.admin.inventory_handler import InventoryHandler
 from modules.schemas.inventory_schemas import (
     AssetStatus,
     BatteryCreate,
+    BatteryStatusUpdate,
     BikePricingCreate,
     BikePricingRead,
     BikePricingUpdate,
@@ -11,6 +12,7 @@ from modules.schemas.inventory_schemas import (
     BatteryUpdate,
     BikeCreate,
     BikeRead,
+    BikeStatusUpdate,
     BikeUpdate,
     LocationCreate,
     LocationRead,
@@ -82,6 +84,13 @@ def admin_update_bike(
 ):
     return handler.update_bike(bike_id, body)
 
+@router.patch("/admin/bikes/{bike_id}/status", response_model=BikeRead)
+def admin_update_bike_status(
+    bike_id: int,
+    body: BikeStatusUpdate,
+    handler: InventoryHandler = Depends(InventoryHandler),
+):
+    return handler.update_bike_status(bike_id, body)
 
 @router.get("/admin/batteries", response_model=list[BatteryRead])
 def admin_list_batteries(
@@ -115,6 +124,13 @@ def admin_update_battery(
 ):
     return handler.update_battery(battery_id, body)
 
+@router.patch("/admin/batteries/{battery_id}/status", response_model=BatteryRead)
+def admin_update_battery_status(
+    battery_id: int,
+    body: BatteryStatusUpdate,
+    handler: InventoryHandler = Depends(InventoryHandler),
+):
+    return handler.update_battery_status(battery_id, body)
 
 @router.get("/admin/bike-pricing", response_model=list[BikePricingRead])
 def admin_list_bike_pricing(

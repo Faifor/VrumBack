@@ -81,16 +81,13 @@ class UserDocument(Base):
             if doc.refresh_dates_and_status(update_active=False):
                 changed = True
 
-        active_set = False
         for doc in docs:
             in_range = bool(
                 doc.filled_date
                 and doc.end_date
                 and doc.filled_date <= today <= doc.end_date
             )
-            new_active = in_range and not active_set
-            if new_active:
-                active_set = True
+            new_active = in_range
             if doc.active != new_active:
                 doc.active = new_active
                 changed = True

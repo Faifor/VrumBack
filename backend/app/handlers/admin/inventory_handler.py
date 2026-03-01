@@ -12,12 +12,14 @@ from modules.schemas.inventory_schemas import (
     AssetStatus,
     BatteryCreate,
     BatteryRead,
+    BatteryStatusUpdate,
     BatteryUpdate,
     BikeCreate,
     BikePricingCreate,
     BikePricingRead,
     BikePricingUpdate,
     BikeRead,
+    BikeStatusUpdate,
     BikeUpdate,
     LocationCreate,
     LocationRead,
@@ -109,6 +111,17 @@ class InventoryHandler:
         bike_contracts, _ = self._get_active_contract_maps()
         return self._to_bike_read(bike, bike_contracts.get(bike.vin))
 
+    def update_bike_status(self, bike_id: int, body: BikeStatusUpdate) -> BikeRead:
+        bike = self.db.query(Bike).filter(Bike.id == bike_id).first()
+        if not bike:
+            raise HTTPException(status_code=404, detail="Велосипед не найден")
+
+        bike.status = body.status.value
+        self.db.commit()
+        self.db.refresh(bike)
+        bike_contracts, _ = self._get_active_contract_maps()
+        return self._to_bike_read(bike, bike_contracts.get(bike.vin))
+
     def list_batteries(self, status_filter: AssetStatus | None = None) -> list[BatteryRead]:
         query = self.db.query(Battery)
         if status_filter:
@@ -150,6 +163,19 @@ class InventoryHandler:
         for field, value in payload.items():
             setattr(battery, field, value)
 
+        self.db.commit()
+        self.db.refresh(battery)
+        _, battery_contracts = self._get_active_contract_maps()
+        return self._to_battery_read(battery, battery_contracts.get(battery.number))
+
+    def update_battery_status(
+        self, battery_id: int, body: BatteryStatusUpdate
+    ) -> BatteryRead:
+        battery = self.db.query(Battery).filter(Battery.id == battery_id).first()
+        if not battery:
+            raise HTTPException(status_code=404, detail="АКБ не найден")
+
+        battery.status = body.status.value
         self.db.commit()
         self.db.refresh(battery)
         _, battery_contracts = self._get_active_contract_maps()

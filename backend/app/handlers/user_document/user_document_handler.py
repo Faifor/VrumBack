@@ -61,6 +61,21 @@ class UserDocumentHandler:
             for doc in docs
         ]
 
+    def list_my_active_contracts(self):
+        docs = [
+            doc for doc in UserDocument.refresh_user_documents_status(self.db, self.user.id) if doc.active
+        ]
+        contract_url_available = self.user.status == DocumentStatusEnum.APPROVED
+        return [
+            {
+                **serialize_document_for_response(doc, self.cipher, self.user),
+                "contract_docx_url": (
+                    f"/users/me/contract-docx/{doc.id}" if contract_url_available else None
+                ),
+            }
+            for doc in docs
+        ]
+
     def upsert_my_document(self, data: UserDocumentUserUpdate):
         doc = self._get_my_document()
         if self.user.status == DocumentStatusEnum.PENDING:

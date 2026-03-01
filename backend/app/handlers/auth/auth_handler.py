@@ -40,6 +40,7 @@ class AuthHandler:
     PASSWORD_RESET_CODE_TTL = timedelta(
         minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES
     )
+    PASSWORD_RESET_RESEND_INTERVAL = timedelta(seconds=30)
 
     # ВАЖНО: тут указываем Depends, и используем обычный Session
     def __init__(self, session: Session = Depends(get_session)):
@@ -152,7 +153,8 @@ class AuthHandler:
         if not user:
             # Возвращаем тот же ответ, чтобы не выдавать существование пользователя
             return {"detail": "Если аккаунт существует, письмо уже отправлено"}
-
+ 
+        self._ensure_password_reset_resend_allowed(user.id)
         reset_request = self._create_reset_request(user)
 
         try:
@@ -219,6 +221,31 @@ class AuthHandler:
         user.last_failed_login_at = None
         self.session.commit()
 
+    def _ensure_password_reset_resend_allowed(self, user_id: int) -> None:
+        now = datetime.now(timezone.utc)
+        stmt = (
+            select(PasswordResetRequest)
+            .where(PasswordResetRequest.user_id == user_id)
+            .order_by(PasswordResetRequest.created_at.desc())
+        )
+        last_request = self.session.execute(stmt).scalars().first()
+        if not last_request:
+            return
+
+        created_at = last_request.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+
+        allowed_at = created_at + self.PASSWORD_RESET_RESEND_INTERVAL
+        if now >= allowed_at:
+            return
+
+        remaining = int((allowed_at - now).total_seconds()) + 1
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Повторно запросить код можно через {remaining} секунд.",
+        )
+ 
     def _create_reset_request(self, user: User) -> PasswordResetRequest:
         expires_at = datetime.now(timezone.utc) + self.PASSWORD_RESET_CODE_TTL
 
