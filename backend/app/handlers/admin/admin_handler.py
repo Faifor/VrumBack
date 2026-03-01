@@ -104,69 +104,45 @@ class AdminHandler:
         ]
 
     def update_user_document(
-        self, user_id: int, body: UserDocumentAdminUpdateInput
+        self, user_id: int, document_id: int, body: UserDocumentAdminUpdateInput
     ) -> UserDocumentRead:
         user = self._get_user_or_404(user_id)
         self._ensure_user_approved(user)
 
-        update_payload = body.model_dump(exclude_unset=True)
-        update_payload.pop("contract_number", None)
-        has_updates = bool(update_payload)
+        doc = self._get_user_document_or_404(user_id, document_id)
 
-        doc = self._get_latest_user_document(user_id)
-
-        if not doc:
-            if not has_updates:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Нет данных для создания договора",
-                )
-            doc = self._create_document(user_id, user)
-        elif not doc.active and has_updates:
-            doc = self._create_document(user_id, user)
-
-        if doc.signed and has_updates:
+        if doc.signed:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Подписанный договор нельзя редактировать",
             )
 
-        if not has_updates:
-            return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
-
-        update_payload.pop("amount", None)
-        update_payload.pop("amount_text", None)
-
-        self._ensure_inventory_is_free_for_contract(update_payload)
-
-        encrypted_data = encrypt_document_fields(
-            update_payload,
-            self.cipher,
-            allowed_fields=_ADMIN_DOCUMENT_FIELDS,
-        )
-
-        for field, value in encrypted_data.items():
-            setattr(doc, field, value)
-
-        if body.weeks_count is not None or "weeks_count" in body.model_fields_set:
-            doc.weeks_count = body.weeks_count
-
-        if body.filled_date is not None or "filled_date" in body.model_fields_set:
-            doc.filled_date = body.filled_date
-
-        needs_amount_refresh = bool(
-            {"bike_serial", "weeks_count", "filled_date", "amount"}
-            & body.model_fields_set
-        )
-        self._recalculate_contract_amount(doc, require_data=needs_amount_refresh)
-
-        doc.refresh_dates_and_status(update_active=False)
-        self._ensure_contract_number(doc)
+        self._apply_admin_document_updates(doc, body, require_data=False)
 
         self.db.commit()
         UserDocument.refresh_user_documents_status(self.db, user_id)
         self.db.refresh(doc)
-        return UserDocumentRead(**serialize_document_for_response(doc, self.cipher))
+        return UserDocumentRead(**serialize_document_for_response(doc, self.cipher, user))
+
+    def create_user_contract(
+        self, user_id: int, body: UserDocumentAdminUpdateInput
+    ) -> UserDocumentRead:
+        user = self._get_user_or_404(user_id)
+        self._ensure_user_approved(user)
+
+        if not body.model_fields_set:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Нет данных для создания договора",
+            )
+
+        doc = self._create_document(user_id, user)
+        self._apply_admin_document_updates(doc, body, require_data=True)
+
+        self.db.commit()
+        UserDocument.refresh_user_documents_status(self.db, user_id)
+        self.db.refresh(doc)
+        return UserDocumentRead(**serialize_document_for_response(doc, self.cipher, user))
 
     def approve_document(self, user_id: int) -> UserDocumentRead:
         user = self._get_user_or_404(user_id)
@@ -668,6 +644,47 @@ class AdminHandler:
                 detail="Пользователь не найден",
             )
         return user
+    
+    def _apply_admin_document_updates(
+        self,
+        doc: UserDocument,
+        body: UserDocumentAdminUpdateInput,
+        require_data: bool,
+    ) -> None:
+        update_payload = body.model_dump(exclude_unset=True)
+
+        if not update_payload:
+            if require_data:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Нет данных для создания договора",
+                )
+            return
+
+        self._ensure_inventory_is_free_for_contract(update_payload)
+
+        encrypted_data = encrypt_document_fields(
+            update_payload,
+            self.cipher,
+            allowed_fields=_ADMIN_DOCUMENT_FIELDS,
+        )
+
+        for field, value in encrypted_data.items():
+            setattr(doc, field, value)
+
+        if body.weeks_count is not None or "weeks_count" in body.model_fields_set:
+            doc.weeks_count = body.weeks_count
+
+        if body.filled_date is not None or "filled_date" in body.model_fields_set:
+            doc.filled_date = body.filled_date
+
+        needs_amount_refresh = bool(
+            {"bike_serial", "weeks_count", "filled_date"} & body.model_fields_set
+        )
+        self._recalculate_contract_amount(doc, require_data=require_data or needs_amount_refresh)
+
+        doc.refresh_dates_and_status(update_active=False)
+        self._ensure_contract_number(doc)
 
     def _build_user_summary(self, user: User) -> UserWithDocumentSummary:
         personal_data = decrypt_user_fields(user, self.cipher)

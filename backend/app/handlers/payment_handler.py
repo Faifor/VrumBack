@@ -58,6 +58,7 @@ class PaymentHandler:
 
         result = YooKassaClient().create_payment(payload)
         payment = self._store_payment(order, current_user, amount, data.currency, result, data.save_payment_method, is_autopay=False)
+        self.session.flush()
 
         if data.save_payment_method:
             current_user.autopay_enabled = True
@@ -181,6 +182,7 @@ class PaymentHandler:
 
         result = YooKassaClient().create_payment(payload)
         payment = self._store_payment(order, current_user, amount, data.currency, result, True, is_autopay=True)
+        self.session.flush()
 
         if schedule_item:
             schedule_item.order_id = order.id

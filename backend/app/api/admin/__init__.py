@@ -14,6 +14,7 @@ from .user_payment_schedule import router as user_payment_schedule_router
 from .inventory import router as inventory_router
 from .return_acts import router as return_acts_router
 from .return_act_docx import router as return_act_docx_router
+from .create_contract import router as create_contract_router
 
 admin_router = APIRouter()
 
@@ -31,3 +32,4 @@ admin_router.include_router(user_payment_schedule_router, tags=["Admin Payments"
 admin_router.include_router(inventory_router, tags=["Admin Inventory"])
 admin_router.include_router(return_acts_router, tags=["Admin Contracts"])
 admin_router.include_router(return_act_docx_router, tags=["Admin Contracts"])
+admin_router.include_router(create_contract_router, tags=["Admin Contracts"])
