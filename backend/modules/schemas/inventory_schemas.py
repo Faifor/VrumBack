@@ -67,6 +67,8 @@ class BikeUpdate(BaseModel):
     type_id: int | None = None
     location_id: int | None = Field(default=None)
 
+class BikeStatusUpdate(BaseModel):
+    status: AssetStatus
 
 class BikeRead(BikeBase):
     id: int
@@ -101,6 +103,8 @@ class BatteryUpdate(BaseModel):
     purchase_date: date | None = None
     location_id: int | None = Field(default=None)
 
+class BatteryStatusUpdate(BaseModel):
+    status: AssetStatus
 
 class BatteryRead(BatteryBase):
     id: int
