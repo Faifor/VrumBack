@@ -49,3 +49,13 @@ def send_password_reset_code(recipient: str, code: str) -> None:
         "Если вы не запрашивали смену пароля, просто игнорируйте это письмо."
     )
     _send_email(recipient, subject, body)
+
+
+def send_registration_code(recipient: str, code: str) -> None:
+    subject = "Код подтверждения регистрации"
+    body = (
+        "Мы получили запрос на регистрацию аккаунта.\n\n"
+        f"Код подтверждения: {code}\n\n"
+        "Если это были не вы, просто игнорируйте это письмо."
+    )
+    _send_email(recipient, subject, body)
