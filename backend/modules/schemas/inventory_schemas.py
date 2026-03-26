@@ -1,7 +1,7 @@
 from datetime import date
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AssetStatus(str, Enum):
@@ -120,6 +120,12 @@ class BikePricingBase(BaseModel):
     min_weeks_count: int = Field(ge=1)
     max_weeks_count: int = Field(ge=1)
     amount_weeks: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_weeks_range(self) -> "BikePricingBase":
+        if self.min_weeks_count >= self.max_weeks_count:
+            raise ValueError("min_weeks_count должен быть строго меньше max_weeks_count")
+        return self
 
 
 class BikePricingCreate(BikePricingBase):

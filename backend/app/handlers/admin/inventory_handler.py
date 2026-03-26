@@ -85,6 +85,7 @@ class InventoryHandler:
 
     def create_bike(self, body: BikeCreate) -> BikeRead:
         self._ensure_location_exists(body.location_id)
+        self._ensure_unique_bike_fields(number=body.number, vin=body.vin)
         bike = Bike(**body.model_dump())
         bike.status = body.status.value
         self.db.add(bike)
@@ -102,6 +103,12 @@ class InventoryHandler:
             self._ensure_location_exists(payload["location_id"])
         if "status" in payload and payload["status"] is not None:
             payload["status"] = payload["status"].value
+        if "number" in payload or "vin" in payload:
+            self._ensure_unique_bike_fields(
+                number=payload.get("number", bike.number),
+                vin=payload.get("vin", bike.vin),
+                exclude_bike_id=bike.id,
+            )
 
         for field, value in payload.items():
             setattr(bike, field, value)
@@ -142,6 +149,7 @@ class InventoryHandler:
 
     def create_battery(self, body: BatteryCreate) -> BatteryRead:
         self._ensure_location_exists(body.location_id)
+        self._ensure_unique_battery_number(number=body.number)
         battery = Battery(**body.model_dump())
         battery.status = body.status.value
         self.db.add(battery)
@@ -159,6 +167,11 @@ class InventoryHandler:
             self._ensure_location_exists(payload["location_id"])
         if "status" in payload and payload["status"] is not None:
             payload["status"] = payload["status"].value
+        if "number" in payload:
+            self._ensure_unique_battery_number(
+                number=payload["number"],
+                exclude_battery_id=battery.id,
+            )
 
         for field, value in payload.items():
             setattr(battery, field, value)
@@ -199,6 +212,11 @@ class InventoryHandler:
 
     def create_bike_pricing(self, body: BikePricingCreate) -> BikePricingRead:
         self._ensure_pricing_weeks_range(body.min_weeks_count, body.max_weeks_count)
+        self._ensure_pricing_range_not_overlapping(
+            type_id=body.type_id,
+            min_weeks_count=body.min_weeks_count,
+            max_weeks_count=body.max_weeks_count,
+        )
         pricing = BikePricing(**body.model_dump())
         self.db.add(pricing)
         self.db.commit()
@@ -209,9 +227,16 @@ class InventoryHandler:
         pricing = self.get_bike_pricing(pricing_id)
         payload = body.model_dump(exclude_unset=True)
 
+        type_id = payload.get("type_id", pricing.type_id)
         min_weeks = payload.get("min_weeks_count", pricing.min_weeks_count)
         max_weeks = payload.get("max_weeks_count", pricing.max_weeks_count)
         self._ensure_pricing_weeks_range(min_weeks, max_weeks)
+        self._ensure_pricing_range_not_overlapping(
+            type_id=type_id,
+            min_weeks_count=min_weeks,
+            max_weeks_count=max_weeks,
+            exclude_pricing_id=pricing.id,
+        )
 
         for field, value in payload.items():
             setattr(pricing, field, value)
@@ -221,11 +246,79 @@ class InventoryHandler:
         return BikePricingRead.model_validate(pricing)
 
     def _ensure_pricing_weeks_range(self, min_weeks_count: int, max_weeks_count: int) -> None:
-        if min_weeks_count > max_weeks_count:
+        if min_weeks_count <= 0 or max_weeks_count <= 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="min_weeks_count не может быть больше max_weeks_count",
+                detail="min_weeks_count и max_weeks_count должны быть положительными числами",
             )
+        if min_weeks_count >= max_weeks_count:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="min_weeks_count должен быть строго меньше max_weeks_count",
+            )
+
+    def _ensure_unique_bike_fields(
+        self,
+        number: str,
+        vin: str,
+        exclude_bike_id: int | None = None,
+    ) -> None:
+        number_query = self.db.query(Bike).filter(Bike.number == number)
+        vin_query = self.db.query(Bike).filter(Bike.vin == vin)
+        if exclude_bike_id is not None:
+            number_query = number_query.filter(Bike.id != exclude_bike_id)
+            vin_query = vin_query.filter(Bike.id != exclude_bike_id)
+
+        if number_query.first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Велосипед с таким number уже существует",
+            )
+        if vin_query.first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Велосипед с таким vin уже существует",
+            )
+
+    def _ensure_unique_battery_number(
+        self,
+        number: str,
+        exclude_battery_id: int | None = None,
+    ) -> None:
+        query = self.db.query(Battery).filter(Battery.number == number)
+        if exclude_battery_id is not None:
+            query = query.filter(Battery.id != exclude_battery_id)
+        if query.first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="АКБ с таким number уже существует",
+            )
+
+    def _ensure_pricing_range_not_overlapping(
+        self,
+        type_id: int,
+        min_weeks_count: int,
+        max_weeks_count: int,
+        exclude_pricing_id: int | None = None,
+    ) -> None:
+        query = self.db.query(BikePricing).filter(BikePricing.type_id == type_id)
+        if exclude_pricing_id is not None:
+            query = query.filter(BikePricing.id != exclude_pricing_id)
+
+        existing_ranges = query.all()
+        for item in existing_ranges:
+            ranges_intersect = not (
+                max_weeks_count < item.min_weeks_count
+                or min_weeks_count > item.max_weeks_count
+            )
+            if ranges_intersect:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Для одного type_id диапазоны min_weeks_count/max_weeks_count "
+                        "не должны пересекаться"
+                    ),
+                )
 
     def _ensure_location_exists(self, location_id: int | None) -> None:
         if location_id is None:
