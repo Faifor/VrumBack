@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from app.handlers.admin.inventory_handler import InventoryHandler
 from modules.schemas.inventory_schemas import (
@@ -52,6 +52,15 @@ def admin_update_location(
     return handler.update_location(location_id, body)
 
 
+@router.delete("/admin/locations/{location_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_location(
+    location_id: int,
+    handler: InventoryHandler = Depends(InventoryHandler),
+):
+    handler.delete_location(location_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/admin/bikes", response_model=list[BikeRead])
 def admin_list_bikes(
     status_filter: AssetStatus | None = Query(default=None, alias="status"),
@@ -84,6 +93,7 @@ def admin_update_bike(
 ):
     return handler.update_bike(bike_id, body)
 
+
 @router.patch("/admin/bikes/{bike_id}/status", response_model=BikeRead)
 def admin_update_bike_status(
     bike_id: int,
@@ -91,6 +101,16 @@ def admin_update_bike_status(
     handler: InventoryHandler = Depends(InventoryHandler),
 ):
     return handler.update_bike_status(bike_id, body)
+
+
+@router.delete("/admin/bikes/{bike_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_bike(
+    bike_id: int,
+    handler: InventoryHandler = Depends(InventoryHandler),
+):
+    handler.delete_bike(bike_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
 
 @router.get("/admin/batteries", response_model=list[BatteryRead])
 def admin_list_batteries(
@@ -124,6 +144,7 @@ def admin_update_battery(
 ):
     return handler.update_battery(battery_id, body)
 
+
 @router.patch("/admin/batteries/{battery_id}/status", response_model=BatteryRead)
 def admin_update_battery_status(
     battery_id: int,
@@ -131,6 +152,16 @@ def admin_update_battery_status(
     handler: InventoryHandler = Depends(InventoryHandler),
 ):
     return handler.update_battery_status(battery_id, body)
+
+
+@router.delete("/admin/batteries/{battery_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_battery(
+    battery_id: int,
+    handler: InventoryHandler = Depends(InventoryHandler),
+):
+    handler.delete_battery(battery_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
 
 @router.get("/admin/bike-pricing", response_model=list[BikePricingRead])
 def admin_list_bike_pricing(
@@ -164,3 +195,12 @@ def admin_update_bike_pricing(
     handler: InventoryHandler = Depends(InventoryHandler),
 ):
     return handler.update_bike_pricing(pricing_id, body)
+
+
+@router.delete("/admin/bike-pricing/{pricing_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_bike_pricing(
+    pricing_id: int,
+    handler: InventoryHandler = Depends(InventoryHandler),
+):
+    handler.delete_bike_pricing(pricing_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
