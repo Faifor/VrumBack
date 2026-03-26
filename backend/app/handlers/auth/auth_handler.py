@@ -1,28 +1,33 @@
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-
-from sqlalchemy.orm import Session
+from jose import JWTError
 from sqlalchemy import select, update
+from sqlalchemy.orm import Session
 
 from modules.connection_to_db.database import get_session
+from modules.models.email_verification_request import EmailVerificationRequest
 from modules.models.password_reset_request import PasswordResetRequest
 from modules.models.user import User
-from modules.schemas.user_schemas import UserCreate, UserRead
 from modules.schemas.auth_schemas import (
     PasswordResetConfirm,
     PasswordResetRequest as PasswordResetRequestSchema,
+    RegistrationCodeRequest,
     Token,
 )
+from modules.schemas.user_schemas import UserCreate, UserRead
 from modules.utils.config import settings
 from modules.utils.document_security import (
     decrypt_user_fields,
     get_sensitive_data_cipher,
 )
-from modules.utils.email_utils import send_password_reset_code
-from jose import JWTError
-
+from modules.utils.email_utils import (
+    send_password_reset_code,
+    send_registration_code,
+)
 from modules.utils.jwt_utils import (
     create_access_token,
     create_refresh_token,
@@ -42,7 +47,13 @@ class AuthHandler:
     )
     PASSWORD_RESET_RESEND_INTERVAL = timedelta(seconds=30)
 
-    # ВАЖНО: тут указываем Depends, и используем обычный Session
+    REGISTRATION_CODE_TTL = timedelta(minutes=10)
+    REGISTRATION_LOCKOUT = timedelta(seconds=60)
+    REGISTRATION_RESEND_INTERVAL = timedelta(seconds=30)
+    REGISTRATION_PASSWORD_PATTERN = re.compile(
+        r"^(?=.*[A-Za-z])(?=.*\d)(?=.*[!\"№@#$%^&*()_+\-=\[\]{};':\\|,.<>/?`~:])[A-Za-z\d!\"№@#$%^&*()_+\-=\[\]{};':\\|,.<>/?`~:]{9,}$"
+    )
+
     def __init__(self, session: Session = Depends(get_session)):
         self.session = session
 
@@ -54,17 +65,48 @@ class AuthHandler:
     def _err(self, message: str, code: int = status.HTTP_400_BAD_REQUEST):
         raise HTTPException(status_code=code, detail=message)
 
+    async def request_registration_code(
+        self, data: RegistrationCodeRequest
+    ) -> dict[str, str]:
+        if self._get_user_by_email(data.email):
+            self._err("Пользователь с такой почтой уже зарегистрирован")
+
+        self._ensure_registration_resend_allowed(data.email)
+        verification = self._create_registration_request(data.email)
+
+        try:
+            send_registration_code(data.email, verification.code)
+        except RuntimeError as exc:
+            self._err(str(exc), status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return {"detail": "Письмо с кодом подтверждения отправлено"}
+
     async def register(self, data: UserCreate) -> UserRead:
-        # БЕЗ await, функция синхронная
         exists = self._get_user_by_email(data.email)
         if exists:
             self._err("User already exists")
+
+        self._validate_registration_passwords(data.password, data.password_repeat)
+
+        verification = self._get_active_registration_request(data.email)
+        if not verification:
+            self._err("Нет активного запроса на подтверждение почты")
+
+        self._ensure_registration_attempts_allowed(verification)
+
+        if verification.code != data.code:
+            self._register_failed_registration_attempt(verification)
+            self._err("Неверный код подтверждения")
 
         user = User(
             email=data.email,
             hashed_password=hash_password(data.password),
             role="user",
         )
+
+        verification.is_used = True
+        verification.attempts = 0
+        verification.locked_until = None
 
         self.session.add(user)
         self.session.commit()
@@ -151,9 +193,8 @@ class AuthHandler:
         user = self._get_user_by_email(data.email)
 
         if not user:
-            # Возвращаем тот же ответ, чтобы не выдавать существование пользователя
             return {"detail": "Если аккаунт существует, письмо уже отправлено"}
- 
+
         self._ensure_password_reset_resend_allowed(user.id)
         reset_request = self._create_reset_request(user)
 
@@ -186,6 +227,122 @@ class AuthHandler:
         self.session.commit()
 
         return {"detail": "Пароль успешно обновлен"}
+
+    def _validate_registration_passwords(
+        self, password: str, password_repeat: str
+    ) -> None:
+        if password != password_repeat:
+            self._err("Пароли не совпадают")
+
+        if not self.REGISTRATION_PASSWORD_PATTERN.match(password):
+            self._err(
+                "Пароль должен быть длиннее 8 символов, содержать английские буквы, минимум одну цифру и минимум один спецсимвол"
+            )
+
+    def _ensure_registration_resend_allowed(self, email: str) -> None:
+        now = datetime.now(timezone.utc)
+        stmt = (
+            select(EmailVerificationRequest)
+            .where(EmailVerificationRequest.email == email)
+            .order_by(EmailVerificationRequest.created_at.desc())
+        )
+        last_request = self.session.execute(stmt).scalars().first()
+        if not last_request:
+            return
+
+        created_at = last_request.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+
+        allowed_at = created_at + self.REGISTRATION_RESEND_INTERVAL
+        if now >= allowed_at:
+            return
+
+        remaining = int((allowed_at - now).total_seconds()) + 1
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Повторно запросить код можно через {remaining} секунд.",
+        )
+
+    def _create_registration_request(self, email: str) -> EmailVerificationRequest:
+        expires_at = datetime.now(timezone.utc) + self.REGISTRATION_CODE_TTL
+
+        self.session.execute(
+            update(EmailVerificationRequest)
+            .where(
+                EmailVerificationRequest.email == email,
+                EmailVerificationRequest.is_used.is_(False),
+            )
+            .values(is_used=True)
+        )
+
+        verification = EmailVerificationRequest(
+            email=email,
+            code=f"{secrets.randbelow(1_000_000):06d}",
+            expires_at=expires_at,
+            attempts=0,
+            locked_until=None,
+        )
+
+        self.session.add(verification)
+        self.session.commit()
+        self.session.refresh(verification)
+
+        return verification
+
+    def _get_active_registration_request(
+        self, email: str
+    ) -> EmailVerificationRequest | None:
+        now = datetime.now(timezone.utc)
+        stmt = (
+            select(EmailVerificationRequest)
+            .where(
+                EmailVerificationRequest.email == email,
+                EmailVerificationRequest.is_used.is_(False),
+                EmailVerificationRequest.expires_at > now,
+            )
+            .order_by(EmailVerificationRequest.created_at.desc())
+        )
+        return self.session.execute(stmt).scalars().first()
+
+    def _ensure_registration_attempts_allowed(
+        self, verification: EmailVerificationRequest
+    ) -> None:
+        now = datetime.now(timezone.utc)
+
+        if verification.expires_at <= now:
+            verification.is_used = True
+            self.session.commit()
+            self._err("Срок действия кода истёк")
+
+        if verification.locked_until:
+            locked_until = verification.locked_until
+            if locked_until.tzinfo is None:
+                locked_until = locked_until.replace(tzinfo=timezone.utc)
+
+            if locked_until > now:
+                remaining = int((locked_until - now).total_seconds())
+                self._err(
+                    f"Слишком много попыток. Попробуйте через {remaining} секунд.",
+                    status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+
+            verification.attempts = 0
+            verification.locked_until = None
+            self.session.commit()
+
+    def _register_failed_registration_attempt(
+        self, verification: EmailVerificationRequest
+    ) -> None:
+        verification.attempts = (verification.attempts or 0) + 1
+
+        if verification.attempts >= settings.PASSWORD_RESET_MAX_ATTEMPTS:
+            verification.locked_until = (
+                datetime.now(timezone.utc) + self.REGISTRATION_LOCKOUT
+            )
+            verification.attempts = 0
+
+        self.session.commit()
 
     def _ensure_not_locked(self, user: User) -> None:
         if (
@@ -245,7 +402,7 @@ class AuthHandler:
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Повторно запросить код можно через {remaining} секунд.",
         )
- 
+
     def _create_reset_request(self, user: User) -> PasswordResetRequest:
         expires_at = datetime.now(timezone.utc) + self.PASSWORD_RESET_CODE_TTL
 
@@ -318,7 +475,9 @@ class AuthHandler:
         reset_request.attempts = (reset_request.attempts or 0) + 1
 
         if reset_request.attempts >= settings.PASSWORD_RESET_MAX_ATTEMPTS:
-            reset_request.locked_until = datetime.now(timezone.utc) + self.PASSWORD_RESET_LOCKOUT
+            reset_request.locked_until = datetime.now(
+                timezone.utc
+            ) + self.PASSWORD_RESET_LOCKOUT
             reset_request.attempts = 0
 
         self.session.commit()

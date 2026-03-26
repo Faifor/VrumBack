@@ -7,7 +7,9 @@ DocumentStatus = Literal["draft", "pending", "approved", "rejected"]
 
 class UserCreate(BaseModel):
     email: EmailStr = Field(...)
+    code: str = Field(...)
     password: str = Field(...)
+    password_repeat: str = Field(...)
 
 
 class UserRead(BaseModel):

@@ -28,3 +28,7 @@ class PasswordResetConfirm(BaseModel):
     email: EmailStr = Field(...)
     code: str = Field(...)
     new_password: str = Field(...)
+
+
+class RegistrationCodeRequest(BaseModel):
+    email: EmailStr = Field(...)
