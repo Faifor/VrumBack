@@ -67,6 +67,11 @@ class InventoryHandler:
         self.db.refresh(location)
         return location
 
+    def delete_location(self, location_id: int) -> None:
+        location = self.get_location(location_id)
+        self.db.delete(location)
+        self.db.commit()
+
     def list_bikes(self, status_filter: AssetStatus | None = None) -> list[BikeRead]:
         query = self.db.query(Bike)
         if status_filter:
@@ -128,6 +133,13 @@ class InventoryHandler:
         self.db.refresh(bike)
         bike_contracts, _ = self._get_active_contract_maps()
         return self._to_bike_read(bike, bike_contracts.get(bike.vin))
+
+    def delete_bike(self, bike_id: int) -> None:
+        bike = self.db.query(Bike).filter(Bike.id == bike_id).first()
+        if not bike:
+            raise HTTPException(status_code=404, detail="Велосипед не найден")
+        self.db.delete(bike)
+        self.db.commit()
 
     def list_batteries(self, status_filter: AssetStatus | None = None) -> list[BatteryRead]:
         query = self.db.query(Battery)
@@ -194,6 +206,13 @@ class InventoryHandler:
         _, battery_contracts = self._get_active_contract_maps()
         return self._to_battery_read(battery, battery_contracts.get(battery.number))
 
+    def delete_battery(self, battery_id: int) -> None:
+        battery = self.db.query(Battery).filter(Battery.id == battery_id).first()
+        if not battery:
+            raise HTTPException(status_code=404, detail="АКБ не найден")
+        self.db.delete(battery)
+        self.db.commit()
+
     def list_bike_pricing(self, type_id: int | None = None) -> list[BikePricing]:
         query = self.db.query(BikePricing)
         if type_id is not None:
@@ -244,6 +263,11 @@ class InventoryHandler:
         self.db.commit()
         self.db.refresh(pricing)
         return BikePricingRead.model_validate(pricing)
+
+    def delete_bike_pricing(self, pricing_id: int) -> None:
+        pricing = self.get_bike_pricing(pricing_id)
+        self.db.delete(pricing)
+        self.db.commit()
 
     def _ensure_pricing_weeks_range(self, min_weeks_count: int, max_weeks_count: int) -> None:
         if min_weeks_count <= 0 or max_weeks_count <= 0:
