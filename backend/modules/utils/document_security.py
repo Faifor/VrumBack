@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -318,30 +319,15 @@ def _week_word(n: int | None) -> str:
     return "недель"
 
 
-def render_contract_docx(
+def _build_contract_values(
     user: "User", doc: "UserDocument", decrypted_fields: Mapping[str, Any]
-) -> str:
-    template_path = get_contract_template_path()
-    if not template_path.exists():
-        raise FileNotFoundError(
-            f"DOCX-шаблон не найден по пути: {template_path}. "
-            "Поместите контрактный шаблон в SECURE_STORAGE_DIR/templates "
-            "и обновите CONTRACT_TEMPLATE_FILENAME при необходимости."
-        )
-
-    document = DocxDocument(template_path)
-
+) -> dict[str, Any]:
     today_str = datetime.utcnow().strftime("%d.%m.%Y")
     week_word = _week_word(doc.weeks_count)
-
-    filled_date_value = decrypted_fields.get("filled_date")
-    end_date_value = decrypted_fields.get("end_date")
-    filled_date_str = _format_date_human(filled_date_value) or today_str
-    end_date_str = _format_date_human(end_date_value)
-
+    filled_date_str = _format_date_human(decrypted_fields.get("filled_date")) or today_str
+    end_date_str = _format_date_human(decrypted_fields.get("end_date"))
     last_name, first_name, patronymic = _split_full_name(decrypted_fields.get("full_name"))
-
-    values: dict[str, Any] = {
+    return {
         "CITY": _CONTRACT_CITY,
         "DATE": today_str,
         "FULL_NAME": decrypted_fields.get("full_name") or "",
@@ -373,11 +359,24 @@ def render_contract_docx(
         "Дат_конец_аренды": end_date_str,
     }
 
-    _replace_placeholders_in_docx(document, values)
 
-    out_path = get_generated_contract_path(user.id)
-    document.save(out_path)
-    return str(out_path)
+def render_contract_docx(
+    user: "User", doc: "UserDocument", decrypted_fields: Mapping[str, Any]
+) -> io.BytesIO:
+    """Generate contract DOCX in memory and return as BytesIO (no disk write)."""
+    template_path = get_contract_template_path()
+    if not template_path.exists():
+        raise FileNotFoundError(
+            f"DOCX-шаблон не найден по пути: {template_path}. "
+            "Поместите контрактный шаблон в SECURE_STORAGE_DIR/templates "
+            "и обновите CONTRACT_TEMPLATE_FILENAME при необходимости."
+        )
+    document = DocxDocument(template_path)
+    _replace_placeholders_in_docx(document, _build_contract_values(user, doc, decrypted_fields))
+    buf = io.BytesIO()
+    document.save(buf)
+    buf.seek(0)
+    return buf
 
 
 def _format_date_human(value: Any) -> str:
@@ -387,7 +386,8 @@ def _format_date_human(value: Any) -> str:
         return value.strftime("%d.%m.%Y")
     return str(value)
 
-def render_return_act_docx(values: Mapping[str, Any], user_id: int, act_id: int) -> str:
+def render_return_act_docx(values: Mapping[str, Any]) -> io.BytesIO:
+    """Generate return-act DOCX in memory and return as BytesIO (no disk write)."""
     template_path = get_return_act_template_path()
     if not template_path.exists():
         raise FileNotFoundError(
@@ -395,10 +395,9 @@ def render_return_act_docx(values: Mapping[str, Any], user_id: int, act_id: int)
             "Поместите шаблон в SECURE_STORAGE_DIR/templates "
             "и обновите RETURN_ACT_TEMPLATE_FILENAME при необходимости."
         )
-
     document = DocxDocument(template_path)
     _replace_placeholders_in_docx(document, values)
-
-    out_path = get_generated_return_act_path(user_id, act_id)
-    document.save(out_path)
-    return str(out_path)
+    buf = io.BytesIO()
+    document.save(buf)
+    buf.seek(0)
+    return buf

@@ -7,6 +7,11 @@ services:
     restart: always
     ports:
       - "3000:80"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   backend:
     container_name: backend
@@ -27,6 +32,11 @@ services:
       --host 0.0.0.0
       --port 8000
       --log-level info
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   db:
     container_name: db
@@ -40,6 +50,11 @@ services:
       - "5488:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
 
 volumes:
   postgres_data:

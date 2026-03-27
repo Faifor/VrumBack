@@ -545,7 +545,7 @@ class AdminHandler:
             .all()
         )
 
-    def get_contract_docx_path(self, user_id: int, document_id: int) -> str:
+    def get_contract_docx_bytes(self, user_id: int, document_id: int):
         user = self._get_user_or_404(user_id)
         doc = self._get_user_document_or_404(user_id, document_id)
 
@@ -561,11 +561,10 @@ class AdminHandler:
         }
         return render_contract_docx(user, doc, decrypted_fields)
 
-    def get_return_act_docx_path(self, user_id: int, act_id: int) -> str:
-        self._get_user_or_404(user_id)
+    def get_return_act_docx_bytes(self, user_id: int, act_id: int):
+        user = self._get_user_or_404(user_id)
         act = self._get_return_act_or_404(user_id, act_id)
 
-        user = self._get_user_or_404(user_id)
         personal_data = decrypt_user_fields(user, self.cipher)
         last_name, first_name, patronymic = self._split_full_name(personal_data.get("full_name"))
 
@@ -587,7 +586,7 @@ class AdminHandler:
             "Сумма_повреждений": act.damage_amount,
             "Срок_долга": act.debt_term_days,
         }
-        return render_return_act_docx(values, user_id=user_id, act_id=act.id)
+        return render_return_act_docx(values)
 
     def _ensure_inventory_is_free_for_contract(
         self, update_payload: dict[str, object]

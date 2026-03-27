@@ -145,7 +145,7 @@ class UserDocumentHandler:
         self.db.refresh(self.user)
         return serialize_document_for_response(doc, self.cipher, self.user)
 
-    def get_my_contract_docx_path(self, document_id: int) -> str:
+    def get_my_contract_docx_bytes(self, document_id: int):
         doc = self._get_my_document(document_id)
         if not doc:
             raise HTTPException(

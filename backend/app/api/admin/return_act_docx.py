@@ -1,9 +1,13 @@
 from fastapi import APIRouter, Depends
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 
 from app.handlers.admin.admin_handler import AdminHandler
 
 router = APIRouter()
+
+_DOCX_MEDIA_TYPE = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+)
 
 
 @router.get("/admin/users/{user_id}/return-acts/{act_id}/docx")
@@ -12,11 +16,10 @@ def admin_get_return_act_docx(
     act_id: int,
     handler: AdminHandler = Depends(AdminHandler),
 ):
-    path = handler.get_return_act_docx_path(user_id, act_id)
-    return FileResponse(
-        path,
-        media_type=(
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        ),
-        filename=path.split("/")[-1],
+    buf = handler.get_return_act_docx_bytes(user_id, act_id)
+    filename = f"return_act_{act_id}.docx"
+    return StreamingResponse(
+        buf,
+        media_type=_DOCX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
